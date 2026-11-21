@@ -1,8 +1,11 @@
 from fastapi import APIRouter
 
-router = APIRouter(prefix="/api/v1")
+from app.models.expense.router import router as expense_router
 
-# 后续在此注册记账、分类统计、查账、预算等路由
+router = APIRouter(prefix="/api/v1")
+router.include_router(expense_router)
+
+# 后续在此注册分类统计、查账、预算等路由
 
 
 @router.get("/ping")
