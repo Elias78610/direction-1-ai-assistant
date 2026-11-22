@@ -2,29 +2,32 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models.expense.models import Expense
-from app.models.expense.schemas import ExpenseCreate, ExpenseOut
+from app.modules.expense.repository import ExpenseRepository
+from app.modules.expense.schemas import ExpenseCreate, ExpenseOut
+from app.modules.expense.service import ExpenseService
 
 router = APIRouter(prefix="/expenses", tags=["账目"])
 
 
+def get_service(db: Annotated[Session, Depends(get_db)]) -> ExpenseService:
+    return ExpenseService(ExpenseRepository(db), db)
+
+
 @router.post("", response_model=ExpenseOut, status_code=201, summary="新增账目")
-def create_expense(data: ExpenseCreate, db: Annotated[Session, Depends(get_db)]):
+def create_expense(
+    data: ExpenseCreate,
+    service: Annotated[ExpenseService, Depends(get_service)],
+):
     """录入一条消费记录，返回入库后的完整数据。"""
-    expense = Expense(**data.model_dump())
-    db.add(expense)
-    db.commit()
-    db.refresh(expense)
-    return expense
+    return service.create(data)
 
 
 @router.get("", response_model=list[ExpenseOut], summary="查询账目")
 def list_expenses(
-    db: Annotated[Session, Depends(get_db)],
+    service: Annotated[ExpenseService, Depends(get_service)],
     category: Annotated[str | None, Query(description="按类别过滤")] = None,
     start: Annotated[datetime | None, Query(description="消费时间下限（含）")] = None,
     end: Annotated[datetime | None, Query(description="消费时间上限（含）")] = None,
@@ -32,12 +35,7 @@ def list_expenses(
     offset: Annotated[int, Query(ge=0, description="跳过条数")] = 0,
 ):
     """按消费时间倒序查询账目，支持类别与时间范围过滤。"""
-    stmt = select(Expense).order_by(Expense.spent_at.desc())
-    if category:
-        stmt = stmt.where(Expense.category == category)
-    if start:
-        stmt = stmt.where(Expense.spent_at >= start)
-    if end:
-        stmt = stmt.where(Expense.spent_at <= end)
-    stmt = stmt.offset(offset).limit(limit)
-    return db.scalars(stmt).all()
+    return service.list(
+        category=category, start=start, end=end,
+        limit=limit, offset=offset,
+    )

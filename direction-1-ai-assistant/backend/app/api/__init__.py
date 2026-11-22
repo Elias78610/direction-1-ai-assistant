@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.models.expense.router import router as expense_router
+from app.modules.expense.router import router as expense_router
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(expense_router)

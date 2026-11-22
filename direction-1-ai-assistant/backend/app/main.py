@@ -5,7 +5,7 @@ from sqlalchemy import text
 from app.api import router as api_router
 from app.core.config import settings
 from app.db.session import Base, engine
-from app.models import User  # noqa: F401  导入模型以注册表结构
+from app.modules import User  # noqa: F401  导入模型以注册表结构
 
 Base.metadata.create_all(engine)
 
