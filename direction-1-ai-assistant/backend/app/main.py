@@ -4,8 +4,13 @@ from sqlalchemy import text
 
 from app.api import router as api_router
 from app.core.config import settings
+from app.core.exceptions import register_exception_handlers
+from app.core.logging import setup_logging
+from app.core.middleware import RequestContextMiddleware
 from app.db.session import Base, engine
 from app.modules import User  # noqa: F401  导入模型以注册表结构
+
+setup_logging(settings.log_level)
 
 Base.metadata.create_all(engine)
 
@@ -19,6 +24,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 最后添加的中间件位于最外层，保证每个请求（含 CORS 预检）都有请求 ID 和访问日志
+app.add_middleware(RequestContextMiddleware)
+
+register_exception_handlers(app)
 
 app.include_router(api_router)
 

@@ -62,3 +62,49 @@ curl http://localhost:8000/health
 | Streamlit 前端 | 8501 |
 | FastAPI 后端 | 8000 |
 | MySQL（主机映射） | 13306 |
+
+## 错误响应格式
+
+所有接口错误统一返回 JSON，并附带 `request_id`：
+
+```json
+{
+  "code": "EXPENSE_NOT_FOUND",
+  "message": "账目不存在",
+  "request_id": "8f3c2a..."
+}
+```
+
+参数校验失败（422）额外带字段明细：
+
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "参数校验失败",
+  "errors": [
+    {"field": "body.amount", "message": "Input should be greater than 0"}
+  ],
+  "request_id": "8f3c2a..."
+}
+```
+
+常见错误码：
+
+| code | 含义 |
+|---|---|
+| `VALIDATION_ERROR` | 请求参数不合法（422） |
+| `BAD_REQUEST` | 请求逻辑错误，如时间范围传反（400） |
+| `NOT_FOUND` | 资源不存在（404） |
+| `INTERNAL_ERROR` | 服务器内部错误（500），详细堆栈只在日志中 |
+
+## 日志
+
+日志输出到控制台，容器内用 `docker compose logs -f backend` 查看。
+
+- 每个请求生成 `X-Request-ID` 响应头，日志里带同一个 ID
+- 前端报错时把 `request_id` 一并反馈，后端可直接搜日志
+- 日志级别通过环境变量 `LOG_LEVEL` 控制，默认 `INFO`
+
+```
+2026-11-23 16:00:00 | INFO | app.core.middleware | 8f3c2a... | GET /api/v1/expenses -> 200 12.3ms
+```

@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_name: str = "AI 记账助手"
+    log_level: str = "INFO"
 
     database_url: str = (
         "mysql+pymysql://ledger:ledger123456@localhost:13306/ledger?charset=utf8mb4"
