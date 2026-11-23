@@ -109,6 +109,8 @@ class ExpenseOut(BaseModel):
     note: str | None
     source: str
     raw_text: str | None
+    image_path: str | None
+    is_deleted: bool
     user_id: int | None
     created_time: datetime
     updated_time: datetime
