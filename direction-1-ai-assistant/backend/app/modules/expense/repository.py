@@ -16,6 +16,10 @@ class ExpenseRepository:
         self.db.add(expense)
         return expense
 
+    def get(self, expense_id: int) -> Expense | None:
+        """按主键查询单条账目，不存在返回 None。"""
+        return self.db.get(Expense, expense_id)
+
     def list(
         self,
         category: str | None = None,

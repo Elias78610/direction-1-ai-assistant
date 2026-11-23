@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -39,3 +39,15 @@ def list_expenses(
         category=category, start=start, end=end,
         limit=limit, offset=offset,
     )
+
+
+@router.get("/{expense_id}", response_model=ExpenseOut, summary="账目详情")
+def get_expense(
+    expense_id: int,
+    service: Annotated[ExpenseService, Depends(get_service)],
+):
+    """按 id 查询单条账目，不存在返回 404。"""
+    expense = service.get(expense_id)
+    if expense is None:
+        raise HTTPException(status_code=404, detail="账目不存在")
+    return expense
