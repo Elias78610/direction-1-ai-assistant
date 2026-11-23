@@ -11,7 +11,7 @@ from pydantic import (
     field_validator,
 )
 
-from app.modules.expense.constants import CATEGORIES
+from app.common.categories import CATEGORIES
 
 
 def _validate_category(value: str) -> str:
