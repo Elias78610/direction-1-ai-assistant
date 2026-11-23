@@ -64,3 +64,13 @@ def update_expense(
     if expense is None:
         raise HTTPException(status_code=404, detail="账目不存在")
     return expense
+
+
+@router.delete("/{expense_id}", status_code=204, summary="删除账目")
+def delete_expense(
+    expense_id: int,
+    service: Annotated[ExpenseService, Depends(get_service)],
+) -> None:
+    """删除一条账目，不存在返回 404。"""
+    if not service.delete(expense_id):
+        raise HTTPException(status_code=404, detail="账目不存在")
