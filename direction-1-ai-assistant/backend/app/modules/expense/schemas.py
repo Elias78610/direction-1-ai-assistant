@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import Annotated, Literal
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -10,11 +11,22 @@ from pydantic import (
     field_validator,
 )
 
-# 字符串约束：先去掉首尾空白（包括全角空格），再校验长度。
+from app.modules.expense.constants import CATEGORIES
+
+
+def _validate_category(value: str) -> str:
+    """类别必须来自固定列表，保证统计数据与前端下拉框口径一致。"""
+    if value not in CATEGORIES:
+        raise ValueError(f"类别必须是以下之一：{'、'.join(CATEGORIES)}")
+    return value
+
+
+# 字符串约束：先去掉首尾空白（包括全角空格），再校验长度和类别。
 # 使用 Annotated 定义一次，多个字段复用，避免每个字段重复写 validator。
 CategoryName = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=50),
+    AfterValidator(_validate_category),
 ]
 NoteText = Annotated[
     str,
@@ -35,7 +47,7 @@ class ExpenseCreate(BaseModel):
         ..., gt=0, max_digits=12, decimal_places=2,
         description="金额，单位：元", examples=[25.50])
     category: CategoryName = Field(
-        ..., description="消费类别，自动去除首尾空格，全空格会被拒绝",
+        ..., description="消费类别，必须是固定类别之一，自动去除首尾空格",
         examples=["餐饮"])
     spent_at: datetime = Field(
         ..., description="消费时间", examples=["2026-11-21T12:30:00"])
@@ -64,7 +76,7 @@ class ExpenseUpdate(BaseModel):
         None, gt=0, max_digits=12, decimal_places=2,
         description="金额，单位：元")
     category: CategoryName | None = Field(
-        None, description="消费类别，自动去除首尾空格，全空格会被拒绝")
+        None, description="消费类别，必须是固定类别之一，自动去除首尾空格")
     spent_at: datetime | None = Field(
         None, description="消费时间")
     note: NoteText | None = Field(
