@@ -53,8 +53,32 @@ class ExpenseCreate(BaseModel):
         return value or None
 
 
-class ExpenseUpdate(ExpenseCreate):
-    """修改账目请求：字段与新增一致，采用全量更新。"""
+class ExpenseUpdate(BaseModel):
+    """修改账目请求：只传需要修改的字段，未传字段保持原值。
+
+    显式传 null 会清空可空字段（note / raw_text）；
+    完全省略则不改动，避免前端只改金额时把 source、备注和原文覆盖掉。
+    """
+
+    amount: Decimal | None = Field(
+        None, gt=0, max_digits=12, decimal_places=2,
+        description="金额，单位：元")
+    category: CategoryName | None = Field(
+        None, description="消费类别，自动去除首尾空格，全空格会被拒绝")
+    spent_at: datetime | None = Field(
+        None, description="消费时间")
+    note: NoteText | None = Field(
+        None, description="备注，自动去除首尾空格，空字符串存为 null")
+    source: SourceType | None = Field(
+        None, description="来源：manual 手动 / nlp 自然语言 / ocr 小票识别")
+    raw_text: RawText | None = Field(
+        None, description="原始输入文本或 OCR 识别内容，自动去除首尾空格")
+
+    @field_validator("note", "raw_text", mode="after")
+    @classmethod
+    def blank_to_none(cls, value: str | None) -> str | None:
+        """去空格后为空的可选文本统一转成 None。"""
+        return value or None
 
 
 class ExpenseOut(BaseModel):

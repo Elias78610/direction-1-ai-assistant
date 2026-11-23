@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.expense.models import Expense
 from app.modules.expense.repository import ExpenseRepository
-from app.modules.expense.schemas import ExpenseCreate
+from app.modules.expense.schemas import ExpenseCreate, ExpenseUpdate
 
 
 class ExpenseService:
@@ -24,12 +24,12 @@ class ExpenseService:
         """查询单条账目，不存在由路由层返回 404。"""
         return self.repo.get(expense_id)
 
-    def update(self, expense_id: int, data: ExpenseCreate) -> Expense | None:
-        """全量更新账目，不存在返回 None。"""
+    def update(self, expense_id: int, data: ExpenseUpdate) -> Expense | None:
+        """部分更新账目：只写入请求中显式携带的字段，不存在返回 None。"""
         expense = self.repo.get(expense_id)
         if expense is None:
             return None
-        self.repo.update(expense, data.model_dump())
+        self.repo.update(expense, data.model_dump(exclude_unset=True))
         self.db.commit()
         self.db.refresh(expense)
         return expense
