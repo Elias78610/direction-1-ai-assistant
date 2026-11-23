@@ -20,6 +20,10 @@ class ExpenseService:
         self.db.refresh(expense)
         return expense
 
+    def get(self, expense_id: int) -> Expense | None:
+        """查询单条账目，不存在由路由层返回 404。"""
+        return self.repo.get(expense_id)
+
     def list(
         self,
         category: str | None = None,
