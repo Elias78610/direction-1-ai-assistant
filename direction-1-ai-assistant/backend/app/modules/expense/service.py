@@ -50,8 +50,11 @@ class ExpenseService:
         end: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[Expense]:
-        return self.repo.list(
+    ) -> tuple[list[Expense], int]:
+        """返回当前页数据和过滤后的总条数。"""
+        items = self.repo.list(
             category=category, start=start, end=end,
             limit=limit, offset=offset,
         )
+        total = self.repo.count(category=category, start=start, end=end)
+        return items, total
