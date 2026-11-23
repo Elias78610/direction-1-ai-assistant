@@ -5,6 +5,15 @@ from sqlalchemy.orm import Session
 
 from app.modules.expense.models import Expense
 
+# 排序字段白名单：只允许映射表里的列参与排序，避免拼接未知字段
+SORT_COLUMNS = {
+    "id": Expense.id,
+    "spent_at": Expense.spent_at,
+    "amount": Expense.amount,
+    "category": Expense.category,
+    "created_time": Expense.created_time,
+}
+
 
 class ExpenseRepository:
     """账目数据访问层：只负责查询，不做业务判断。"""
@@ -53,8 +62,20 @@ class ExpenseRepository:
         end: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
+        sort_by: str = "spent_at",
+        order: str = "desc",
     ) -> list[Expense]:
-        stmt = select(Expense).order_by(Expense.spent_at.desc())
+        column = SORT_COLUMNS[sort_by]
+        direction = column.asc() if order == "asc" else column.desc()
+
+        # id 作为第二排序键：主字段相同（例如同一时间记多笔）时顺序确定，
+        # 翻页不会出现重复或漏项
+        order_clauses = [direction]
+        if sort_by != "id":
+            order_clauses.append(
+                Expense.id.asc() if order == "asc" else Expense.id.desc())
+
+        stmt = select(Expense).order_by(*order_clauses)
         stmt = self._apply_filters(stmt, category, start, end)
         stmt = stmt.offset(offset).limit(limit)
         return list(self.db.scalars(stmt).all())

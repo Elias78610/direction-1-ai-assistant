@@ -12,6 +12,8 @@ from app.modules.expense.schemas import (
     ExpenseListOut,
     ExpenseOut,
     ExpenseUpdate,
+    SortField,
+    SortOrder,
 )
 from app.modules.expense.service import ExpenseService
 
@@ -39,14 +41,17 @@ def list_expenses(
     end: Annotated[EndDatetime, Query(description="消费时间上限（含），传日期时包含当天")] = None,
     limit: Annotated[int, Query(ge=1, le=500, description="返回条数上限")] = 100,
     offset: Annotated[int, Query(ge=0, description="跳过条数")] = 0,
+    sort_by: Annotated[SortField, Query(description="排序字段")] = "spent_at",
+    order: Annotated[SortOrder, Query(description="排序方向：asc 升序 / desc 降序")] = "desc",
 ):
-    """按消费时间倒序查询账目，返回当前页数据与过滤后的总条数。"""
+    """查询账目，支持过滤、排序和分页，返回当前页数据与过滤后的总条数。"""
     # 时间范围传反时直接报错，避免返回空列表被误认为「没有记账」
     if start and end and start > end:
         raise HTTPException(status_code=400, detail="开始时间不能晚于结束时间")
     items, total = service.list(
         category=category, start=start, end=end,
         limit=limit, offset=offset,
+        sort_by=sort_by, order=order,
     )
     return ExpenseListOut(total=total, items=items)
 

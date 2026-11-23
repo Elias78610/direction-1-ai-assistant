@@ -39,6 +39,10 @@ RawText = Annotated[
 
 SourceType = Literal["manual", "nlp", "ocr"]
 
+# 列表接口允许的排序字段与方向，由路由参数校验，repository 白名单映射
+SortField = Literal["id", "spent_at", "amount", "category", "created_time"]
+SortOrder = Literal["asc", "desc"]
+
 
 class ExpenseCreate(BaseModel):
     """新增账目请求。"""

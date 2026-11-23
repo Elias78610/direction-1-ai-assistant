@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.expense.models import Expense
 from app.modules.expense.repository import ExpenseRepository
-from app.modules.expense.schemas import ExpenseCreate, ExpenseUpdate
+from app.modules.expense.schemas import ExpenseCreate, ExpenseUpdate, SortField, SortOrder
 
 
 class ExpenseService:
@@ -50,11 +50,14 @@ class ExpenseService:
         end: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
+        sort_by: SortField = "spent_at",
+        order: SortOrder = "desc",
     ) -> tuple[list[Expense], int]:
         """返回当前页数据和过滤后的总条数。"""
         items = self.repo.list(
             category=category, start=start, end=end,
             limit=limit, offset=offset,
+            sort_by=sort_by, order=order,
         )
         total = self.repo.count(category=category, start=start, end=end)
         return items, total
