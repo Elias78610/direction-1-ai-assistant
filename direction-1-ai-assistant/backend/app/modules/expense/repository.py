@@ -20,6 +20,12 @@ class ExpenseRepository:
         """按主键查询单条账目，不存在返回 None。"""
         return self.db.get(Expense, expense_id)
 
+    def update(self, expense: Expense, data: dict) -> Expense:
+        """把新字段写入 ORM 对象，事务由 service 统一提交。"""
+        for field, value in data.items():
+            setattr(expense, field, value)
+        return expense
+
     def list(
         self,
         category: str | None = None,
