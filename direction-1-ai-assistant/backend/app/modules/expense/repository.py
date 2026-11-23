@@ -26,6 +26,10 @@ class ExpenseRepository:
             setattr(expense, field, value)
         return expense
 
+    def delete(self, expense: Expense) -> None:
+        """标记删除，事务由 service 统一提交。"""
+        self.db.delete(expense)
+
     def list(
         self,
         category: str | None = None,

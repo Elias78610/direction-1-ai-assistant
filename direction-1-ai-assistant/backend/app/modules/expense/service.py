@@ -34,6 +34,15 @@ class ExpenseService:
         self.db.refresh(expense)
         return expense
 
+    def delete(self, expense_id: int) -> bool:
+        """删除账目，成功返回 True，不存在返回 False。"""
+        expense = self.repo.get(expense_id)
+        if expense is None:
+            return False
+        self.repo.delete(expense)
+        self.db.commit()
+        return True
+
     def list(
         self,
         category: str | None = None,
