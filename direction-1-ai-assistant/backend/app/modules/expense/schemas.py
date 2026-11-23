@@ -53,6 +53,10 @@ class ExpenseCreate(BaseModel):
         return value or None
 
 
+class ExpenseUpdate(ExpenseCreate):
+    """修改账目请求：字段与新增一致，采用全量更新。"""
+
+
 class ExpenseOut(BaseModel):
     """账目返回结构。"""
 

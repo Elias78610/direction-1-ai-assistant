@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.modules.expense.repository import ExpenseRepository
-from app.modules.expense.schemas import ExpenseCreate, ExpenseOut
+from app.modules.expense.schemas import ExpenseCreate, ExpenseOut, ExpenseUpdate
 from app.modules.expense.service import ExpenseService
 
 router = APIRouter(prefix="/expenses", tags=["账目"])
@@ -48,6 +48,19 @@ def get_expense(
 ):
     """按 id 查询单条账目，不存在返回 404。"""
     expense = service.get(expense_id)
+    if expense is None:
+        raise HTTPException(status_code=404, detail="账目不存在")
+    return expense
+
+
+@router.put("/{expense_id}", response_model=ExpenseOut, summary="修改账目")
+def update_expense(
+    expense_id: int,
+    data: ExpenseUpdate,
+    service: Annotated[ExpenseService, Depends(get_service)],
+):
+    """全量更新一条账目，不存在返回 404。"""
+    expense = service.update(expense_id, data)
     if expense is None:
         raise HTTPException(status_code=404, detail="账目不存在")
     return expense
