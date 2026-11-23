@@ -6,7 +6,12 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.modules.expense.repository import ExpenseRepository
-from app.modules.expense.schemas import ExpenseCreate, ExpenseOut, ExpenseUpdate
+from app.modules.expense.schemas import (
+    ExpenseCreate,
+    ExpenseListOut,
+    ExpenseOut,
+    ExpenseUpdate,
+)
 from app.modules.expense.service import ExpenseService
 
 router = APIRouter(prefix="/expenses", tags=["账目"])
@@ -25,7 +30,7 @@ def create_expense(
     return service.create(data)
 
 
-@router.get("", response_model=list[ExpenseOut], summary="查询账目")
+@router.get("", response_model=ExpenseListOut, summary="查询账目")
 def list_expenses(
     service: Annotated[ExpenseService, Depends(get_service)],
     category: Annotated[str | None, Query(description="按类别过滤")] = None,
@@ -34,11 +39,12 @@ def list_expenses(
     limit: Annotated[int, Query(ge=1, le=500, description="返回条数上限")] = 100,
     offset: Annotated[int, Query(ge=0, description="跳过条数")] = 0,
 ):
-    """按消费时间倒序查询账目，支持类别与时间范围过滤。"""
-    return service.list(
+    """按消费时间倒序查询账目，返回当前页数据与过滤后的总条数。"""
+    items, total = service.list(
         category=category, start=start, end=end,
         limit=limit, offset=offset,
     )
+    return ExpenseListOut(total=total, items=items)
 
 
 @router.get("/{expense_id}", response_model=ExpenseOut, summary="账目详情")

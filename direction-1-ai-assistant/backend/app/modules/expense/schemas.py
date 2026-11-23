@@ -72,3 +72,10 @@ class ExpenseOut(BaseModel):
     user_id: int | None
     created_time: datetime
     updated_time: datetime
+
+
+class ExpenseListOut(BaseModel):
+    """账目分页响应：total 为过滤后的总条数，items 为当前页数据。"""
+
+    total: int
+    items: list[ExpenseOut]

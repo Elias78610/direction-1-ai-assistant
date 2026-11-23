@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.modules.expense.models import Expense
@@ -15,6 +15,22 @@ class ExpenseRepository:
     def create(self, expense: Expense) -> Expense:
         self.db.add(expense)
         return expense
+
+    @staticmethod
+    def _apply_filters(
+        stmt,
+        category: str | None,
+        start: datetime | None,
+        end: datetime | None,
+    ):
+        """给查询语句追加过滤条件，列表和计数共用，保证两侧口径一致。"""
+        if category:
+            stmt = stmt.where(Expense.category == category)
+        if start:
+            stmt = stmt.where(Expense.spent_at >= start)
+        if end:
+            stmt = stmt.where(Expense.spent_at <= end)
+        return stmt
 
     def get(self, expense_id: int) -> Expense | None:
         """按主键查询单条账目，不存在返回 None。"""
@@ -39,11 +55,17 @@ class ExpenseRepository:
         offset: int = 0,
     ) -> list[Expense]:
         stmt = select(Expense).order_by(Expense.spent_at.desc())
-        if category:
-            stmt = stmt.where(Expense.category == category)
-        if start:
-            stmt = stmt.where(Expense.spent_at >= start)
-        if end:
-            stmt = stmt.where(Expense.spent_at <= end)
+        stmt = self._apply_filters(stmt, category, start, end)
         stmt = stmt.offset(offset).limit(limit)
         return list(self.db.scalars(stmt).all())
+
+    def count(
+        self,
+        category: str | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> int:
+        """统计符合过滤条件的账目总数，不受分页影响。"""
+        stmt = select(func.count()).select_from(Expense)
+        stmt = self._apply_filters(stmt, category, start, end)
+        return self.db.scalar(stmt) or 0
