@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.core.params import EndDatetime
 from app.db.session import get_db
 from app.modules.expense.repository import ExpenseRepository
 from app.modules.expense.schemas import (
@@ -11,6 +12,8 @@ from app.modules.expense.schemas import (
     ExpenseListOut,
     ExpenseOut,
     ExpenseUpdate,
+    SortField,
+    SortOrder,
 )
 from app.modules.expense.service import ExpenseService
 
@@ -35,14 +38,20 @@ def list_expenses(
     service: Annotated[ExpenseService, Depends(get_service)],
     category: Annotated[str | None, Query(description="按类别过滤")] = None,
     start: Annotated[datetime | None, Query(description="消费时间下限（含）")] = None,
-    end: Annotated[datetime | None, Query(description="消费时间上限（含）")] = None,
+    end: Annotated[EndDatetime, Query(description="消费时间上限（含），传日期时包含当天")] = None,
     limit: Annotated[int, Query(ge=1, le=500, description="返回条数上限")] = 100,
     offset: Annotated[int, Query(ge=0, description="跳过条数")] = 0,
+    sort_by: Annotated[SortField, Query(description="排序字段")] = "spent_at",
+    order: Annotated[SortOrder, Query(description="排序方向：asc 升序 / desc 降序")] = "desc",
 ):
-    """按消费时间倒序查询账目，返回当前页数据与过滤后的总条数。"""
+    """查询账目，支持过滤、排序和分页，返回当前页数据与过滤后的总条数。"""
+    # 时间范围传反时直接报错，避免返回空列表被误认为「没有记账」
+    if start and end and start > end:
+        raise HTTPException(status_code=400, detail="开始时间不能晚于结束时间")
     items, total = service.list(
         category=category, start=start, end=end,
         limit=limit, offset=offset,
+        sort_by=sort_by, order=order,
     )
     return ExpenseListOut(total=total, items=items)
 
@@ -59,13 +68,15 @@ def get_expense(
     return expense
 
 
-@router.put("/{expense_id}", response_model=ExpenseOut, summary="修改账目")
+@router.put("/{expense_id}", response_model=ExpenseOut, summary="修改账目（部分更新）")
 def update_expense(
     expense_id: int,
     data: ExpenseUpdate,
     service: Annotated[ExpenseService, Depends(get_service)],
 ):
-    """全量更新一条账目，不存在返回 404。"""
+    """只更新请求中携带的字段，未传字段保持原值；不存在返回 404。"""
+    if not data.model_fields_set:
+        raise HTTPException(status_code=400, detail="没有需要修改的字段")
     expense = service.update(expense_id, data)
     if expense is None:
         raise HTTPException(status_code=404, detail="账目不存在")
