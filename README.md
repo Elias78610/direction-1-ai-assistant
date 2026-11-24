@@ -23,7 +23,7 @@
 | 前端 | Streamlit |
 | 后端 | FastAPI + Uvicorn，SQLAlchemy 2.x |
 | 数据库 | MySQL 8.0（utf8mb4） |
-| AI 能力 | LangChain，OpenAI 兼容接口（DeepSeek / 通义 / 智谱等），OCR 走视觉模型 API |
+| AI 能力 | LangChain，OpenAI 兼容接口（DeepSeek / 通义 / 智谱等），支持小票 OCR 识别 |
 | 依赖管理 | uv（Python 3.12，锁文件锁定版本） |
 | 部署 | Docker Compose |
 
@@ -36,7 +36,7 @@
 Streamlit 前端 (:8501)
   │ HTTP（容器内网 backend:8000）
   ▼
-FastAPI 后端 (:8000) ── LangChain ──► LLM / 视觉模型（OpenAI 兼容接口）
+FastAPI 后端 (:8000) ── LangChain ──► LLM / OCR 服务（OpenAI 兼容接口）
   │
   ▼
 MySQL 8.0 (:3306，主机映射 13306)
@@ -91,7 +91,7 @@ docker compose up -d --build
 | `MYSQL_*` | 数据库账号、密码、库名、主机映射端口 |
 | `DATABASE_URL` | 后端连接串（容器内由 compose 自动覆盖为 mysql 服务地址） |
 | `LLM_API_KEY` / `LLM_API_BASE` / `LLM_MODEL` | OpenAI 兼容接口的密钥、地址与模型名 |
-| `VISION_API_KEY` 等 | 小票 OCR 使用的视觉模型配置 |
+| `VISION_API_KEY` 等 | 小票 OCR 识别服务配置 |
 | `CORS_ORIGINS` | 允许跨域的前端地址，多个用逗号分隔 |
 
 **不要提交 `.env` 或任何真实 API Key。** 仓库只包含 `.env.example` 模板。

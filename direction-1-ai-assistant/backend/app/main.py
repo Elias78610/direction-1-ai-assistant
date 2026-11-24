@@ -8,7 +8,7 @@ from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
 from app.core.middleware import RequestContextMiddleware
 from app.db.session import Base, engine
-from app.modules import User  # noqa: F401  导入模型以注册表结构
+from app.modules import Expense  # noqa: F401  导入模型以注册表结构
 
 setup_logging(settings.log_level)
 
