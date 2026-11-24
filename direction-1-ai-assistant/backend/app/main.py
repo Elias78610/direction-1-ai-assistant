@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -12,10 +14,19 @@ from app.modules import Expense  # noqa: F401  导入模型以注册表结构
 
 setup_logging(settings.log_level)
 
-Base.metadata.create_all(engine)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用启动时建表。
+
+    放在生命周期里而不是模块导入时，避免导入 app 就连接数据库，
+    测试可以完全使用 SQLite，不依赖 MySQL。
+    """
+    Base.metadata.create_all(engine)
+    yield
 
 
-app = FastAPI(title=settings.app_name)
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
