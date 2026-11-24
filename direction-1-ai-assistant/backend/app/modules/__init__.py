@@ -4,6 +4,5 @@
 """
 
 from app.modules.expense.models import Expense
-from app.modules.user.models import User
 
-__all__ = ["User", "Expense"]
+__all__ = ["Expense"]

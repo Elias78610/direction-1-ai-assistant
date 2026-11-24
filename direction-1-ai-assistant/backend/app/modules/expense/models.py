@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import DateTime, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -32,6 +32,3 @@ class Expense(Base):
         Text, comment="原始输入文本：自然语言记账的原句或 OCR 识别内容")
     image_path: Mapped[str | None] = mapped_column(
         String(255), comment="小票或截图文件路径，OCR 录入时保存")
-    user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id"), index=True,
-        comment="所属用户 ID，登录功能未启用时为空")

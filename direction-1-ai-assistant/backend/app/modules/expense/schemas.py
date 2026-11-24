@@ -110,7 +110,6 @@ class ExpenseOut(BaseModel):
     source: str
     raw_text: str | None
     image_path: str | None
-    user_id: int | None
     created_time: datetime
     updated_time: datetime
 
