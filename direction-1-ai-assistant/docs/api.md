@@ -86,6 +86,11 @@
 
 每个响应都带 `X-Request-ID` 头，值与响应体 `request_id` 一致。前端报错时请一并反馈。
 
+### 1.5 请求字段校验
+
+请求体使用严格模式：出现未定义字段会返回 `422 VALIDATION_ERROR`，不会被静默忽略。
+前端按旧字段名传参（如 `amount_cents`、`direction`）时会立即报错，而不是返回一个字段缺失的成功结果。
+
 ## 2. 数据字典
 
 ### 2.1 账目 Expense
@@ -99,7 +104,7 @@
 | `note` | string \| null | 是 | 备注，最长 255 |
 | `source` | string | 是 | 来源：`manual` / `nlp` / `ocr`，默认 `manual` |
 | `raw_text` | string \| null | 是 | 自然语言原句或 OCR 识别文本 |
-| `image_path` | string \| null | 是（仅 OCR 确认时） | 小票图片路径，由 OCR 接口返回后在确认入库时传入 |
+| `image_path` | string \| null | 是（仅 OCR 确认时） | 小票图片路径，仅 OCR 确认入库时传；必须是 `data/uploads/` 下的相对路径 |
 | `created_time` | string | 否 | 创建时间 |
 | `updated_time` | string | 否 | 更新时间 |
 
@@ -160,9 +165,12 @@ POST /api/v1/expenses
   "spent_at": "2026-11-24T12:30:00",
   "note": "午饭",
   "source": "manual",
-  "raw_text": null
+  "raw_text": null,
+  "image_path": null
 }
 ```
+
+`image_path` 可选，仅 OCR 确认入库时传；普通手动记账不传。
 
 成功：`201`
 
@@ -238,7 +246,8 @@ PUT /api/v1/expenses/{id}
 
 只传需要修改的字段，未传字段保持原值。显式传 `null` 会清空 `note` / `raw_text`。
 
-`amount`、`category`、`spent_at`、`source` 是必填字段，不能传 `null`，否则返回 `422`。
+`amount`、`category`、`spent_at`、`source` 不能显式传 `null`，否则返回 `422`；省略这些字段表示不修改。
+`image_path` 不可通过修改接口更新。
 
 ```json
 {
