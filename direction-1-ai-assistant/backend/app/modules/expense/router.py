@@ -1,10 +1,9 @@
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.core.params import EndDatetime
+from app.core.params import EndDatetime, StartDatetime
 from app.db.session import get_db
 from app.modules.expense.repository import ExpenseRepository
 from app.modules.expense.schemas import (
@@ -37,8 +36,8 @@ def create_expense(
 def list_expenses(
     service: Annotated[ExpenseService, Depends(get_service)],
     category: Annotated[str | None, Query(description="按类别过滤")] = None,
-    start: Annotated[datetime | None, Query(description="消费时间下限（含）")] = None,
-    end: Annotated[EndDatetime, Query(description="消费时间上限（含），传日期时包含当天")] = None,
+    start: Annotated[StartDatetime, Query(description="消费时间下限（含），不能带时区")] = None,
+    end: Annotated[EndDatetime, Query(description="消费时间上限（含），传日期时包含当天，不能带时区")] = None,
     limit: Annotated[int, Query(ge=1, le=500, description="返回条数上限")] = 100,
     offset: Annotated[int, Query(ge=0, description="跳过条数")] = 0,
     sort_by: Annotated[SortField, Query(description="排序字段")] = "spent_at",

@@ -28,6 +28,8 @@
 | 月份 | `YYYY-MM` | `2026-11` |
 | 日期查询参数 | `start`、`end` 可只传日期；`end` 传日期时包含当天 | `end=2026-11-30` |
 
+时间字段**不能带时区**。传 `2026-11-24T12:30:00+08:00` 这类值会返回 `422`，接口不会自动换算时区。
+
 **金额不使用浮点数**（如 `25.5`），也不使用整数分；前端展示时直接使用字符串，不要 `parseFloat` 后自行累加。
 
 ### 1.3 分页与排序
@@ -200,8 +202,8 @@ GET /api/v1/expenses
 | 参数 | 说明 | 默认 |
 |---|---|---|
 | `category` | 按类别过滤 | 不限 |
-| `start` | 消费时间下限（含） | 不限 |
-| `end` | 消费时间上限（含），传日期包含当天 | 不限 |
+| `start` | 消费时间下限（含），不能带时区 | 不限 |
+| `end` | 消费时间上限（含），传日期包含当天，不能带时区 | 不限 |
 | `limit` | 每页条数，1–500 | 100 |
 | `offset` | 跳过条数 | 0 |
 | `sort_by` | `id` / `spent_at` / `amount` / `category` / `created_time` | `spent_at` |
@@ -248,6 +250,9 @@ PUT /api/v1/expenses/{id}
 
 `amount`、`category`、`spent_at`、`source` 不能显式传 `null`，否则返回 `422`；省略这些字段表示不修改。
 `image_path` 不可通过修改接口更新。
+
+修改接口只接受以下字段：`amount`、`category`、`spent_at`、`note`、`source`、`raw_text`。
+不要把详情接口返回的对象原样回传；`id`、`created_time`、`updated_time`、`image_path` 等只读字段会触发 `422`。
 
 ```json
 {
