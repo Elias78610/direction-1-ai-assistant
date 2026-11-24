@@ -47,6 +47,9 @@ SortOrder = Literal["asc", "desc"]
 class ExpenseCreate(BaseModel):
     """新增账目请求。"""
 
+    # 严格模式：请求里出现未定义字段直接返回 422，避免字段被静默丢弃
+    model_config = ConfigDict(extra="forbid")
+
     amount: Decimal = Field(
         ..., gt=0, max_digits=12, decimal_places=2,
         description="金额，单位：元", examples=[25.50])
@@ -61,6 +64,21 @@ class ExpenseCreate(BaseModel):
         "manual", description="来源：manual 手动 / nlp 自然语言 / ocr 小票识别")
     raw_text: RawText | None = Field(
         None, description="原始输入文本或 OCR 识别内容，自动去除首尾空格")
+    image_path: str | None = Field(
+        None, max_length=255,
+        description="小票或截图路径，仅 OCR 确认入库时传，必须在 data/uploads/ 下")
+
+    @field_validator("image_path")
+    @classmethod
+    def validate_image_path(cls, value: str | None) -> str | None:
+        """只允许 data/uploads/ 下的相对路径，避免写入任意路径。"""
+        if value is None:
+            return None
+        if value.startswith("/") or "\\" in value or ".." in value.split("/"):
+            raise ValueError("image_path 必须是 data/uploads/ 下的相对路径")
+        if not value.startswith("data/uploads/"):
+            raise ValueError("image_path 必须以 data/uploads/ 开头")
+        return value
 
     @field_validator("note", "raw_text", mode="after")
     @classmethod
@@ -75,6 +93,9 @@ class ExpenseUpdate(BaseModel):
     显式传 null 会清空可空字段（note / raw_text）；
     完全省略则不改动，避免前端只改金额时把 source、备注和原文覆盖掉。
     """
+
+    # 严格模式：请求里出现未定义字段直接返回 422
+    model_config = ConfigDict(extra="forbid")
 
     amount: Decimal | None = Field(
         None, gt=0, max_digits=12, decimal_places=2,
