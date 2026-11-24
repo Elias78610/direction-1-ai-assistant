@@ -90,6 +90,14 @@ class ExpenseUpdate(BaseModel):
     raw_text: RawText | None = Field(
         None, description="原始输入文本或 OCR 识别内容，自动去除首尾空格")
 
+    @field_validator("amount", "category", "spent_at", "source", mode="before")
+    @classmethod
+    def required_not_null(cls, value):
+        """必填字段不允许显式传 null；未传的字段有默认值，不会触发该校验。"""
+        if value is None:
+            raise ValueError("该字段不能为 null")
+        return value
+
     @field_validator("note", "raw_text", mode="after")
     @classmethod
     def blank_to_none(cls, value: str | None) -> str | None:
