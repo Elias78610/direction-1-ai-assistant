@@ -1,6 +1,6 @@
 # 接口契约 v1
 
-> 状态：草案，待前端确认  
+> 状态：v1 已生效（2026-11-24）
 > 最后更新：2026-11-24  
 > 适用范围：前后端联调、Mock 替换、接口评审
 
@@ -29,6 +29,8 @@
 | 日期查询参数 | `start`、`end` 可只传日期；`end` 传日期时包含当天 | `end=2026-11-30` |
 
 时间字段**不能带时区**。传 `2026-11-24T12:30:00+08:00` 这类值会返回 `422`，接口不会自动换算时区。
+
+日期参数必须补零为标准格式 `YYYY-MM-DD`；`2026-11-3` 这类写法返回 `422`，不会被当作 11 月 3 日处理。
 
 **金额不使用浮点数**（如 `25.5`），也不使用整数分；前端展示时直接使用字符串，不要 `parseFloat` 后自行累加。
 
@@ -104,7 +106,7 @@
 | `category` | string | 是 | 消费类别，必须是固定类别之一 |
 | `spent_at` | string | 是 | 消费时间，ISO 8601 |
 | `note` | string \| null | 是 | 备注，最长 255 |
-| `source` | string | 是 | 来源：`manual` / `nlp` / `ocr`，默认 `manual` |
+| `source` | string | 仅创建时 | 来源：`manual` / `nlp` / `ocr`，默认 `manual`；`ocr` 必须带 `image_path`，`nlp` 必须带 `raw_text`；创建后不可修改 |
 | `raw_text` | string \| null | 是 | 自然语言原句或 OCR 识别文本 |
 | `image_path` | string \| null | 是（仅 OCR 确认时） | 小票图片路径，仅 OCR 确认入库时传；必须是 `data/uploads/` 下的相对路径 |
 | `created_time` | string | 否 | 创建时间 |
@@ -140,7 +142,7 @@ GET /health
 {"status": "ok", "db": "ok"}
 ```
 
-数据库不可用时 `db` 为 `"error"`。
+数据库不可用时 `db` 为 `"error"`。无论数据库是否正常，该接口的 HTTP 状态码都是 `200`，是否健康要看响应体。
 
 ### 3.2 类别列表
 
@@ -173,6 +175,8 @@ POST /api/v1/expenses
 ```
 
 `image_path` 可选，仅 OCR 确认入库时传；普通手动记账不传。
+
+`source` 默认 `manual`；传 `ocr` 必须同时提供 `image_path`，传 `nlp` 必须同时提供 `raw_text`，否则返回 `422`。
 
 成功：`201`
 
@@ -248,11 +252,11 @@ PUT /api/v1/expenses/{id}
 
 只传需要修改的字段，未传字段保持原值。显式传 `null` 会清空 `note` / `raw_text`。
 
-`amount`、`category`、`spent_at`、`source` 不能显式传 `null`，否则返回 `422`；省略这些字段表示不修改。
-`image_path` 不可通过修改接口更新。
+`amount`、`category`、`spent_at` 不能显式传 `null`，否则返回 `422`；省略这些字段表示不修改。
+`source`、`image_path` 在创建时确定，修改接口不接受，传了会返回 `422`。
 
-修改接口只接受以下字段：`amount`、`category`、`spent_at`、`note`、`source`、`raw_text`。
-不要把详情接口返回的对象原样回传；`id`、`created_time`、`updated_time`、`image_path` 等只读字段会触发 `422`。
+修改接口只接受以下字段：`amount`、`category`、`spent_at`、`note`、`raw_text`。
+不要把详情接口返回的对象原样回传；`id`、`created_time`、`updated_time`、`source`、`image_path` 等只读字段会触发 `422`。
 
 ```json
 {
@@ -262,7 +266,7 @@ PUT /api/v1/expenses/{id}
 ```
 
 成功：`200`，返回更新后的完整账目。  
-错误：`400`（空对象）、`404`、`422`
+错误：`404`（id 不存在，优先于空请求体）、`400`（账目存在但请求体为空）、`422`
 
 ### 3.7 删除账目
 
@@ -272,6 +276,20 @@ DELETE /api/v1/expenses/{id}
 
 成功：`204`，无响应体。  
 错误：`404 NOT_FOUND`
+
+硬删除：记录直接从数据库删除，没有回收站，删除后不可恢复。
+
+### 3.8 调试接口
+
+```
+GET /api/v1/ping
+```
+
+```json
+{"message": "pong"}
+```
+
+仅用于连通性检查，不属于业务接口。
 
 ## 4. 规划接口
 
@@ -411,6 +429,7 @@ POST /api/v1/expenses/parse
 
 - 无法识别的字段返回 `null` 并给出 `message` 提示，不猜测
 - 前端展示确认卡片，用户确认后调用 `POST /api/v1/expenses` 入库
+- 实现时该路由必须注册在 `/api/v1/expenses/{expense_id}` 之前，否则 `parse` 会被当成账目 id 解析
 
 ### 4.4 自然语言查账
 
@@ -487,12 +506,12 @@ Content-Type: multipart/form-data
 
 ## 5. 前端现有调用与契约差异
 
-前端当前代码（`feat/frontend-ledger-ui`）使用 Mock 数据，调用路径与本文档不一致。接入后端的需要修改如下：
+前端待合入分支 `feat/frontend-ledger-ui`（尚未合入 `main`）当前使用 Mock 数据，调用路径与本文档不一致。接入后端时需要修改如下：
 
-| 前端当前调用 | v1 契约 | 需要修改 |
+| 前端分支当前调用 | v1 契约 | 需要修改 |
 |---|---|---|
 | `GET /api/categories` | `GET /api/v1/categories` | 补 `/v1` |
-| `POST /api/transactions` | `POST /api/v1/expenses` | 路径；`amount_cents` → `amount`（元字符串）；`occurred_at` → `spent_at`；`category_id` → `category`（中文名）；去掉 `direction`、`merchant` |
+| `POST /api/transactions` | `POST /api/v1/expenses` | 路径；`amount_cents` → `amount`（元字符串）；`occurred_at` → `spent_at`；`category_id` → `category`（中文名）；`source` 的 text/receipt/manual 改为 manual/nlp/ocr；去掉 `direction`、`merchant` |
 | `GET /api/transactions` | `GET /api/v1/expenses` | 路径；`start_date/end_date` → `start/end`；`category_id` → `category`；响应 `{transactions,total}` → `{total,items}` |
 | `PUT/DELETE /api/transactions/{id}` | `/api/v1/expenses/{id}` | 路径；删除成功为 `204` |
 | `POST /api/transactions/parse` | `POST /api/v1/expenses/parse` | 路径；响应结构调整为扁平账目字段 |

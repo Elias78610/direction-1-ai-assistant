@@ -63,6 +63,14 @@ curl http://localhost:8000/health
 | FastAPI 后端 | 8000 |
 | MySQL（主机映射） | 13306 |
 
+## 运行测试
+
+```bash
+docker compose exec -T backend uv run pytest -q
+```
+
+测试使用内存 SQLite，不读写开发数据库，可以随时运行。
+
 ## 错误响应格式
 
 所有接口错误统一返回 JSON，并附带 `request_id`：

@@ -9,6 +9,7 @@ from pydantic import (
     Field,
     StringConstraints,
     field_validator,
+    model_validator,
 )
 
 from app.common.categories import CATEGORIES
@@ -87,6 +88,15 @@ class ExpenseCreate(BaseModel):
         """去空格后为空的可选文本统一转成 None，避免库里出现空字符串。"""
         return value or None
 
+    @model_validator(mode="after")
+    def check_source_fields(self):
+        """来源必须和对应字段匹配，避免手动录入时伪造 ocr / nlp 来源。"""
+        if self.source == "ocr" and not self.image_path:
+            raise ValueError("source=ocr 时必须提供 image_path")
+        if self.source == "nlp" and not self.raw_text:
+            raise ValueError("source=nlp 时必须提供 raw_text")
+        return self
+
 
 class ExpenseUpdate(BaseModel):
     """修改账目请求：只传需要修改的字段，未传字段保持原值。
@@ -107,12 +117,11 @@ class ExpenseUpdate(BaseModel):
         None, description="消费时间，不能带时区")
     note: NoteText | None = Field(
         None, description="备注，自动去除首尾空格，空字符串存为 null")
-    source: SourceType | None = Field(
-        None, description="来源：manual 手动 / nlp 自然语言 / ocr 小票识别")
     raw_text: RawText | None = Field(
         None, description="原始输入文本或 OCR 识别内容，自动去除首尾空格")
 
-    @field_validator("amount", "category", "spent_at", "source", mode="before")
+    # source 在创建时确定，修改接口不接收；传了会触发严格模式 422
+    @field_validator("amount", "category", "spent_at", mode="before")
     @classmethod
     def required_not_null(cls, value):
         """必填字段不允许显式传 null；未传的字段有默认值，不会触发该校验。"""
