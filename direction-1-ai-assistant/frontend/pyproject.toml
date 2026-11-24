@@ -1,0 +1,9 @@
+[project]
+name = "ledger-frontend"
+version = "0.1.0"
+description = "记账助手前端（Streamlit）"
+requires-python = ">=3.12"
+dependencies = [
+    "streamlit>=1.40",
+    "requests>=2.32",
+]

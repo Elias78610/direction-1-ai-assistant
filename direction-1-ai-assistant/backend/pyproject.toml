@@ -1,0 +1,20 @@
+[project]
+name = "ledger-backend"
+version = "0.1.0"
+description = "记账助手后端（FastAPI + SQLAlchemy + LangChain）"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy>=2.0",
+    "pymysql>=1.1",
+    "cryptography>=43",
+    "pydantic-settings>=2.6",
+    "langchain>=0.3",
+    "langchain-openai>=0.2",
+    "python-multipart>=0.0.12",
+]
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true

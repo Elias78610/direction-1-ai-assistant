@@ -1,0 +1,16 @@
+# 环境变量（含密钥）
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# 上传的小票 / 截图
+data/uploads/*
+!data/uploads/.gitkeep
+
+# 编辑器 / 系统
+.idea/
+.vscode/
+.DS_Store
