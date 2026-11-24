@@ -74,6 +74,9 @@ def update_expense(
     service: Annotated[ExpenseService, Depends(get_service)],
 ):
     """只更新请求中携带的字段，未传字段保持原值；不存在返回 404。"""
+    # 先判断资源是否存在，保证前端用 404 判断「账目不存在」时不会被空请求体影响
+    if service.get(expense_id) is None:
+        raise HTTPException(status_code=404, detail="账目不存在")
     if not data.model_fields_set:
         raise HTTPException(status_code=400, detail="没有需要修改的字段")
     expense = service.update(expense_id, data)
