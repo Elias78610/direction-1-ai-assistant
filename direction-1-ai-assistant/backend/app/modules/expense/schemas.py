@@ -12,6 +12,7 @@ from pydantic import (
 )
 
 from app.common.categories import CATEGORIES
+from app.core.params import NaiveDatetime
 
 
 def _validate_category(value: str) -> str:
@@ -56,8 +57,8 @@ class ExpenseCreate(BaseModel):
     category: CategoryName = Field(
         ..., description="消费类别，必须是固定类别之一，自动去除首尾空格",
         examples=["餐饮"])
-    spent_at: datetime = Field(
-        ..., description="消费时间", examples=["2026-11-21T12:30:00"])
+    spent_at: NaiveDatetime = Field(
+        ..., description="消费时间，不能带时区", examples=["2026-11-21T12:30:00"])
     note: NoteText | None = Field(
         None, description="备注，自动去除首尾空格，空字符串存为 null")
     source: SourceType = Field(
@@ -102,8 +103,8 @@ class ExpenseUpdate(BaseModel):
         description="金额，单位：元")
     category: CategoryName | None = Field(
         None, description="消费类别，必须是固定类别之一，自动去除首尾空格")
-    spent_at: datetime | None = Field(
-        None, description="消费时间")
+    spent_at: NaiveDatetime | None = Field(
+        None, description="消费时间，不能带时区")
     note: NoteText | None = Field(
         None, description="备注，自动去除首尾空格，空字符串存为 null")
     source: SourceType | None = Field(

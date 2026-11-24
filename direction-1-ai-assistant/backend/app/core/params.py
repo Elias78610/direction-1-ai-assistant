@@ -3,7 +3,7 @@
 from datetime import date, datetime, time
 from typing import Annotated
 
-from pydantic import BeforeValidator
+from pydantic import AfterValidator, BeforeValidator
 
 
 def _date_to_end_of_day(value):
@@ -17,6 +17,26 @@ def _date_to_end_of_day(value):
     return value
 
 
-# 供查询参数 end 使用：日期写法包含当天，时间写法精确匹配。
-# 统计接口的时间范围也应复用这个类型，保持口径一致。
-EndDatetime = Annotated[datetime | None, BeforeValidator(_date_to_end_of_day)]
+def _reject_aware(value: datetime | None) -> datetime | None:
+    """拒绝带时区的时间，统一使用本地 naive 时间。
+
+    aware 与 naive 直接比较会抛 TypeError，混用还可能悄悄丢掉时区。
+    """
+    if value is not None and value.tzinfo is not None:
+        raise ValueError("时间不能带时区，请使用 YYYY-MM-DDTHH:mm:ss 的本地时间格式")
+    return value
+
+
+# 请求体中的时间字段使用，如 Expense.spent_at
+NaiveDatetime = Annotated[datetime, AfterValidator(_reject_aware)]
+
+# 查询参数 start：不允许带时区
+StartDatetime = Annotated[datetime | None, AfterValidator(_reject_aware)]
+
+# 供查询参数 end 使用：日期写法包含当天，时间写法精确匹配；两种写法都不允许带时区。
+# 统计接口的时间范围也应复用这些类型，保持口径一致。
+EndDatetime = Annotated[
+    datetime | None,
+    BeforeValidator(_date_to_end_of_day),
+    AfterValidator(_reject_aware),
+]
