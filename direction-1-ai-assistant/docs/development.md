@@ -69,7 +69,7 @@ curl http://localhost:8000/health
 docker compose exec -T backend uv run pytest -q
 ```
 
-测试使用内存 SQLite，不读写开发数据库，可以随时运行。
+测试使用内存 SQLite，不读写开发数据库，也不需要启动 MySQL，可以随时运行。
 
 ## 错误响应格式
 
