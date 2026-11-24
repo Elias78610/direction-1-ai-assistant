@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, false
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -10,8 +10,7 @@ from app.db.session import Base
 class Expense(Base):
     """账目表。
 
-    金额使用 Decimal 存储避免浮点误差；删除采用软删除标记，
-    后续查询默认只返回 is_deleted = 0 的记录。
+    金额使用 Decimal 存储避免浮点误差；删除为硬删除，记录直接移除。
     """
 
     __tablename__ = "expenses"
@@ -33,9 +32,6 @@ class Expense(Base):
         Text, comment="原始输入文本：自然语言记账的原句或 OCR 识别内容")
     image_path: Mapped[str | None] = mapped_column(
         String(255), comment="小票或截图文件路径，OCR 录入时保存")
-    is_deleted: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default=false(),
-        index=True, comment="是否已删除：0 未删除，1 已删除（软删除标记）")
     user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"), index=True,
         comment="所属用户 ID，登录功能未启用时为空")
