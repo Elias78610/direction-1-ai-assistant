@@ -51,6 +51,7 @@ MySQL 8.0 (:3306，主机映射 13306)
     ├── docker-compose.yml        # mysql + backend + frontend 编排
     ├── .env.example              # 环境变量模板（复制为 .env 后填写）
     ├── docs/
+    │   ├── api.md                # 前后端接口契约（唯一约定）
     │   ├── development.md        # 开发环境与常用命令
     │   └── assessment-direction-1.md  # 考核说明（归档）
     ├── backend/                  # FastAPI 服务，uv 管理依赖
@@ -115,5 +116,6 @@ docker compose up -d --build
 
 ## 项目文档
 
+- 接口契约：[docs/api.md](direction-1-ai-assistant/docs/api.md)
 - 开发环境说明：[docs/development.md](direction-1-ai-assistant/docs/development.md)
 - 考核说明：[docs/assessment-direction-1.md](direction-1-ai-assistant/docs/assessment-direction-1.md)
