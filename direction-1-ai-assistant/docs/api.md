@@ -504,11 +504,13 @@ Content-Type: multipart/form-data
 - 确认入库时调用 `POST /api/v1/expenses`，可选携带 `image_path`（OCR 接口返回的路径）；后端校验路径必须位于 `data/uploads/` 下
 - 识别失败返回 `400` 或 `503`，前端降级为手动录入
 
-## 5. 前端现有调用与契约差异
+## 5. 前端原型调用与契约差异
 
-前端待合入分支 `feat/frontend-ledger-ui`（尚未合入 `main`）当前使用 Mock 数据，调用路径与本文档不一致。接入后端时需要修改如下：
+前端 Mock 原型保存在远程分支 `feat/frontend-ledger-ui`，该分支尚未合入 `main`（此前的合并已撤回）。`main` 目前不包含前端代码，联调以本文档为准。
 
-| 前端分支当前调用 | v1 契约 | 需要修改 |
+原型调用路径与本文档不一致，接入后端时需要修改如下：
+
+| 前端原型当前调用 | v1 契约 | 需要修改 |
 |---|---|---|
 | `GET /api/categories` | `GET /api/v1/categories` | 补 `/v1` |
 | `POST /api/transactions` | `POST /api/v1/expenses` | 路径；`amount_cents` → `amount`（元字符串）；`occurred_at` → `spent_at`；`category_id` → `category`（中文名）；`source` 的 text/receipt/manual 改为 manual/nlp/ocr；去掉 `direction`、`merchant` |
