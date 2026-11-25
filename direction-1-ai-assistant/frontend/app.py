@@ -36,7 +36,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 import config
-from components import calendar_view, custom_style, emotion_mascot
+from components import budget_alert, calendar_view, custom_style, emotion_mascot
 from components import sidebar as sidebar_ui
 from components import stats_view
 from components.style import apply_global_css
@@ -140,15 +140,35 @@ def _categories() -> list:
     return list(st.session_state.get("categories_real") or CATEGORIES)
 
 
+def _budget_status(amount: float, spent: float) -> tuple:
+    """按后端 BudgetService 的边界返回 (status, message)。
+
+    注意：后端只在 spent > amount 时判定 exceeded；
+    spent == amount 仍属于 warning（达到 100% 但未超过）。
+    """
+    if amount <= 0:
+        return "normal", ""
+    remaining = amount - spent
+    usage = spent / amount * 100
+    if spent > amount:
+        return "exceeded", f"本月已超支 {abs(remaining):.2f} 元"
+    if spent >= amount * config.BUDGET_WARN_RATIO:
+        return "warning", f"本月预算已使用 {usage:.2f}%，注意控制支出"
+    return "normal", f"本月预算剩余 {remaining:.2f} 元"
+
+
 def _budget_snapshot() -> dict:
     """预算：Demo 用滑块模拟；真实模式 GET /api/v1/budgets/{month}。"""
     month = current_month_key()
     if _is_demo_mode():
         ratio = float(st.session_state.get("budget_ratio_pct", 85)) / 100
         budget = float(DEMO_BUDGET["budget"])
-        spent = round(budget * ratio)
+        spent = round(budget * ratio, 2)
+        status, message = _budget_status(budget, spent)
         return {"month": month, "amount": budget, "spent": spent,
+                "remaining": budget - spent,
                 "ratio": ratio, "usage_percent": ratio * 100,
+                "status": status, "message": message,
                 "missing": False}
     try:
         data = api_client.fetch_budgets(month) or {}
@@ -157,18 +177,31 @@ def _budget_snapshot() -> dict:
         usage = data.get("usage_percent")
         ratio = (float(usage) / 100) if usage is not None else (spent / amount if amount else 0)
         usage_percent = float(usage) if usage is not None else ratio * 100
+        remaining = data.get("remaining")
+        remaining = float(remaining) if remaining is not None else amount - spent
+        status = data.get("status")
+        message = data.get("message")
+        if status not in ("normal", "warning", "exceeded"):
+            status, fallback_message = _budget_status(amount, spent)
+            message = message or fallback_message
         return {"month": month, "amount": amount, "spent": spent,
+                "remaining": remaining,
                 "ratio": ratio, "usage_percent": usage_percent,
+                "status": status, "message": message or "",
                 "missing": amount <= 0, "raw": data}
     except api_client.ApiError as exc:
         if exc.status_code == 404:
-            return {"month": month, "amount": 0.0, "spent": 0.0, "ratio": 0.0,
-                    "usage_percent": 0.0, "missing": True}
+            return {"month": month, "amount": 0.0, "spent": 0.0,
+                    "remaining": 0.0, "ratio": 0.0,
+                    "usage_percent": 0.0, "status": "normal",
+                    "message": "", "missing": True}
         st.session_state["_api_error"] = _error_text(exc)
     except Exception as exc:
         st.session_state["_api_error"] = _error_text(exc)
-    return {"month": month, "amount": 0.0, "spent": 0.0, "ratio": 0.0,
-            "usage_percent": 0.0, "missing": True}
+    return {"month": month, "amount": 0.0, "spent": 0.0,
+            "remaining": 0.0, "ratio": 0.0,
+            "usage_percent": 0.0, "status": "normal",
+            "message": "", "missing": True}
 
 
 def _contract_source(source) -> str:
@@ -994,10 +1027,8 @@ def _respond_receipt(upload=None) -> None:
 # ═══════════════════════════════════════════════════════════════
 
 def _render_chat_view() -> None:
-    """对话模式：超支警告 + 历史消息 + 输入 + 确认卡片 + 多模态入口。"""
-    ratio = st.session_state.get("budget_ratio", 0.85)
-    if ratio > 1.0:  # 任务 4：>1.0 才显示红色警告
-        st.error("⚠️ 超支警告：本月已超支！")
+    """对话模式：预算提醒 + 历史消息 + 输入 + 确认卡片 + 多模态入口。"""
+    budget_alert.render(st.session_state.get("budget_snapshot") or {})
 
     pending_prompt = st.session_state.pop("pending_prompt", None)
     pending_upload = st.session_state.pop("pending_upload", None)
@@ -1050,6 +1081,7 @@ _load_categories()
 budget_snapshot = _budget_snapshot()
 ratio = float(budget_snapshot["ratio"])
 st.session_state["budget_ratio"] = ratio
+st.session_state["budget_snapshot"] = budget_snapshot
 if not demo_mode:
     st.session_state["budget_ratio_pct"] = min(120, max(0, int(round(ratio * 100))))
 
