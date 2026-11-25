@@ -16,12 +16,14 @@ st.session_state["budget_ratio_pct"]，由 app.py 换算成 budget_ratio。
 
 import streamlit as st
 
+import config
 from components import custom_style
 
 VIEW_MODES = ("💬 对话", "📅 日历", "📊 统计")
 
 
-def render_sidebar(sessions, current_id, spent, budget):
+def render_sidebar(sessions, current_id, spent, budget, demo_mode=True,
+                   budget_missing=False):
     """渲染侧边栏并返回用户的导航操作。
 
     参数：
@@ -29,9 +31,8 @@ def render_sidebar(sessions, current_id, spent, budget):
         current_id: 当前会话 id
         spent:      本月已支出（元）
         budget:     本月预算（元）
-
-    返回：
-        (new_chat_clicked, selected_session_id)
+        demo_mode:  True 时显示可拖动模拟滑块；False 时滑块锁定
+        budget_missing: 真实模式未设置预算
     """
     new_chat = False
     selected = None
@@ -56,14 +57,18 @@ def render_sidebar(sessions, current_id, spent, budget):
                     unsafe_allow_html=True)
 
         # ── 3. 本月预算进度（原生 st.progress）──
-        # TODO: 真实模式改为读取 GET /api/budgets/status?month=YYYY-MM 的 total.ratio
         st.markdown('<div class="sb-label">本月预算</div>', unsafe_allow_html=True)
         ratio = (spent / budget) if budget else 0.0
         st.progress(min(max(ratio, 0.0), 1.0))
-        st.markdown(
-            f'<div class="sb-budget-meta">已用 {ratio * 100:.0f}% · '
-            f'¥{spent:,.0f} / ¥{budget:,.0f}</div>',
-            unsafe_allow_html=True)
+        if budget_missing:
+            st.markdown(
+                '<div class="sb-budget-meta">本月未设置预算</div>',
+                unsafe_allow_html=True)
+        else:
+            st.markdown(
+                f'<div class="sb-budget-meta">已用 {ratio * 100:.0f}% · '
+                f'¥{spent:,.0f} / ¥{budget:,.0f}</div>',
+                unsafe_allow_html=True)
 
         # ── 4. 历史会话（无边框按钮列表）──
         st.markdown('<div class="sb-label">历史会话</div>', unsafe_allow_html=True)
@@ -80,10 +85,14 @@ def render_sidebar(sessions, current_id, spent, budget):
         # ── 5. 底部面板：高级设置 + 用户气泡颜色 ──
         with st.container(key="sidebar_bottom_panel"):
             with st.expander("⚙️ 高级设置"):
-                st.text_input("后端地址", key="api_base_url")
-                st.toggle("演示模式（DEMO）", key="demo_mode")
+                st.text_input("后端地址", key="api_base_url", disabled=True)
+                demo_mode = st.toggle(
+                    "演示模式（DEMO）",
+                    value=demo_mode,
+                    key="demo_mode",
+                )
 
-                # 任务 4：预算使用率模拟滑块（0-120%）
+                # 演示模式：模拟预算使用率；真实模式由后端预算决定。
                 st.slider(
                     "模拟预算使用率",
                     min_value=0,
@@ -91,11 +100,15 @@ def render_sidebar(sessions, current_id, spent, budget):
                     step=5,
                     key="budget_ratio_pct",
                     format="%d%%",
-                    help="用于测试右下角情绪小球与聊天区超支警告",
+                    disabled=not demo_mode,
+                    help="演示模式用于测试情绪小球与超支警告；真实模式锁定为后端 usage_percent",
                 )
-                st.caption("拖动可测试情绪小球和超支警告")
+                if demo_mode:
+                    st.caption("拖动可测试情绪小球和超支警告")
+                else:
+                    st.caption("真实模式：预算/使用率来自 GET /api/v1/budgets/{month}")
 
-                st.caption("环境变量：LEDGER_API_BASE_URL / LEDGER_DEMO_MODE")
+                st.caption(f"后端地址固定：{config.API_BASE_URL}")
 
             custom_style.render_color_picker()
 

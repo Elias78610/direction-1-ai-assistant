@@ -15,11 +15,10 @@ import datetime
 import streamlit as st
 
 YEAR, MONTH = 2026, 11
-DEFAULT_SELECTED = "2026-11-05"
 WEEKDAYS = ("一", "二", "三", "四", "五", "六", "日")
 CATEGORY_EMOJI = {
     "餐饮": "🍜", "交通": "🚕", "购物": "🛍️", "娱乐": "🎬",
-    "居住": "🏠", "医疗": "💊", "其他": "💸",
+    "居住": "🏠", "医疗": "💊", "教育": "📚", "其他": "💸",
 }
 
 # 固定 Mock 数据：11 笔，合计 ¥1,752.00，与侧边栏演示数据一致
@@ -124,11 +123,30 @@ _CSS = """
 """
 
 
-def _month_total() -> tuple:
+def _month_total(spending) -> tuple:
     """返回 (总金额, 总笔数)。"""
-    total = sum(item["amount"] for records in MOCK_SPENDING.values() for item in records)
-    count = sum(len(records) for records in MOCK_SPENDING.values())
+    total = sum(item["amount"] for records in spending.values() for item in records)
+    count = sum(len(records) for records in spending.values())
     return total, count
+
+
+def _to_spending(records) -> dict:
+    """把契约账目列表转成日历使用的 {YYYY-MM-DD: [{amount, category, note}]}。"""
+    spending = {}
+    for item in records or []:
+        iso = str(item.get("spent_at") or "")[:10]
+        if not iso:
+            continue
+        try:
+            amount = float(item.get("amount") or 0)
+        except (TypeError, ValueError):
+            amount = 0.0
+        spending.setdefault(iso, []).append({
+            "amount": amount,
+            "category": item.get("category") or "其他",
+            "note": item.get("note") or "",
+        })
+    return spending
 
 
 def _date_label(iso: str) -> str:
@@ -139,15 +157,22 @@ def _date_label(iso: str) -> str:
         return iso
 
 
-def render() -> None:
-    """渲染手搓月历 + 选中日期的明细卡片。"""
-    st.markdown(_CSS, unsafe_allow_html=True)
-    st.session_state.setdefault("selected_date", DEFAULT_SELECTED)
-    # TODO: 接入后端接口 GET /api/transactions?start_date=月初&end_date=月末&direction=expense
-    #       用真实流水按 occurred_at 分组替换 MOCK_SPENDING
+def render(records=None, year: int = YEAR, month: int = MONTH) -> None:
+    """渲染手搓月历 + 选中日期的明细卡片。
 
-    total, count = _month_total()
-    st.markdown(f'<div class="cal-title">📅 {YEAR} 年 {MONTH} 月</div>',
+    records=None 时使用内置 MOCK_SPENDING（演示模式）；
+    否则使用传入的真实账目列表（契约字段 amount/spent_at/category/note）。
+    """
+    st.markdown(_CSS, unsafe_allow_html=True)
+    spending = MOCK_SPENDING if records is None else _to_spending(records)
+    default_selected = f"{year:04d}-{month:02d}-05"
+    selected = st.session_state.get("selected_date")
+    if not isinstance(selected, str) or not selected.startswith(f"{year:04d}-{month:02d}-"):
+        selected = default_selected
+        st.session_state["selected_date"] = selected
+
+    total, count = _month_total(spending)
+    st.markdown(f'<div class="cal-title">📅 {year} 年 {month} 月</div>',
                 unsafe_allow_html=True)
     st.markdown(
         f'<div class="cal-sub">本月支出 <b>¥{total:,.2f}</b> · 共 {count} 笔消费</div>',
@@ -160,11 +185,8 @@ def render() -> None:
             st.markdown(f'<div class="cal-weekday">{name}</div>',
                         unsafe_allow_html=True)
 
-    selected = st.session_state.get("selected_date", DEFAULT_SELECTED)
-    if not isinstance(selected, str) or not selected.startswith(f"{YEAR:04d}-{MONTH:02d}-"):
-        selected = DEFAULT_SELECTED
-
-    first_weekday, days_in_month = calendar.monthrange(YEAR, MONTH)
+    selected = st.session_state.get("selected_date", default_selected)
+    first_weekday, days_in_month = calendar.monthrange(year, month)
     cells = [None] * first_weekday + list(range(1, days_in_month + 1))
     while len(cells) % 7:
         cells.append(None)
@@ -179,8 +201,8 @@ def render() -> None:
                     st.markdown('<div class="cal-empty-cell"></div>', unsafe_allow_html=True)
                     continue
 
-                iso = f"{YEAR:04d}-{MONTH:02d}-{day:02d}"
-                records = MOCK_SPENDING.get(iso, [])
+                iso = f"{year:04d}-{month:02d}-{day:02d}"
+                records = spending.get(iso, [])
                 day_total = sum(item["amount"] for item in records)
                 is_selected = iso == selected
 
@@ -204,8 +226,8 @@ def render() -> None:
         st.rerun()
 
     # ── 选中日期的消费明细 ──
-    selected = st.session_state.get("selected_date", DEFAULT_SELECTED)
-    records = MOCK_SPENDING.get(selected, [])
+    selected = st.session_state.get("selected_date", default_selected)
+    records = spending.get(selected, [])
     st.markdown('<div class="cal-divider"></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="cal-detail-title">📌 {_date_label(selected)} 消费明细</div>',
                 unsafe_allow_html=True)

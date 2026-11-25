@@ -8,28 +8,26 @@
 数据全部使用前端写死的 Mock 数据，图表背景透明，
 颜色统一使用主色调蓝色 #4A7BE8 及其浅色梯度。
 
-# TODO: 接入后端接口
-#   GET /api/stats?month=YYYY-MM
-#   建议返回结构：
-#   {
-#     "month": "2026-10",
-#     "total": 1680,
-#     "records": 21,
-#     "categories": [{"name": "餐饮", "amount": 560}, ...],
-#     "monthly_trend": [{"month": "2026-05", "total": 1320}, ...]
-#   }
-#   切换月份后按 selected_month 请求，用返回值替换下方 MOCK_STATS /
-#   MOCK_MONTHLY_TREND；前端不再需要自己准备月份数据。
+# TODO: 接入后端接口（接口契约 v1）
+#   GET /api/v1/stats/summary?start&end
+#   GET /api/v1/stats/categories?start&end
+#   GET /api/v1/stats/trend?start&end&granularity=month
+#   分别用返回的 total_amount / count、items、points 替换下方 Mock 数据。
+#   切换月份时把 YYYY-MM 转为当月 start/end 再请求。
 """
 
 import plotly.graph_objects as go
 import streamlit as st
 
+from services import api_client
+from utils import month_range, shift_month_key, to_error_message
+
 # 当前演示月份（前端 Mock 固定为 2026 年 11 月）
 CURRENT_MONTH = "2026-11"
 
 # 下拉框：value 用于查询 / 接口参数，label 给用户看。
-# TODO: 接入后端接口后，月份列表可改为 GET /api/stats/months 返回；
+# TODO: 接口契约 v1 未提供月份列表接口，当前按演示月份固定生成；
+#       后续如需真实可选月份，可由前端按当前月生成或与后端补充约定。
 #       默认值应取后端返回的“当前月”，这里为了演示写死 2026-11。
 MONTH_OPTIONS = [
     ("2026-11", "本月 · 2026年11月"),
@@ -45,8 +43,10 @@ MONTH_LABELS = dict(MONTH_OPTIONS)
 # Mock 数据（按月份组织，切换下拉框时直接查字典）
 # 每套数据的 categories 金额合计必须等于当月的 MOCK_MONTHLY_TREND，
 # 避免“总支出”和柱状图对不上。
-# TODO: 接入后端接口 GET /api/stats?month=YYYY-MM
-#       删除本段 Mock，用接口返回的 total / records / categories 渲染。
+# TODO: 接入后端接口
+#   GET /api/v1/stats/categories?start&end（分类占比）
+#   GET /api/v1/stats/trend?start&end&granularity=month（近 6 个月趋势）
+#   删除本段 Mock，分别用接口返回的 items / points 渲染。
 # ══════════════════════════════════════════════════════════════════
 MOCK_STATS = {
     "2026-11": {
@@ -201,8 +201,11 @@ _LAYOUT = dict(
 )
 
 
-def _pie_chart(categories, total: int, month: str) -> None:
+def _pie_chart(categories, total: float, month: str) -> None:
     """分类占比环形图；中心用 annotation 展示当前选中月份的总支出。"""
+    if not categories:
+        st.info("当前月份暂无分类数据。")
+        return
     labels = [item[0] for item in categories]
     values = [item[1] for item in categories]
     # 分类数超过调色板长度时循环取色，避免接后端后被分类数量卡住。
@@ -244,18 +247,22 @@ def _pie_chart(categories, total: int, month: str) -> None:
         font=dict(size=10, color="#8A93A6"),
     )
 
-    # TODO: 接入后端接口 GET /api/stats?month={month} -> categories
+    # TODO: 接入后端接口 GET /api/v1/stats/categories?start&end -> items
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
-def _bar_chart(selected_month: str) -> None:
+def _bar_chart(selected_month: str, monthly_trend=None) -> None:
     """近 6 个月趋势柱状图；选中月份的柱子用主色高亮。"""
-    all_months = sorted(MOCK_MONTHLY_TREND)
-    end = all_months.index(selected_month)
+    trend = dict(MOCK_MONTHLY_TREND if monthly_trend is None else monthly_trend)
+    all_months = sorted(trend)
+    if not all_months:
+        st.info("当前月份暂无趋势数据。")
+        return
+    end = all_months.index(selected_month) if selected_month in all_months else len(all_months) - 1
     window = all_months[max(0, end - 5): end + 1]
 
     labels = [f"{int(month.split('-')[1])} 月" for month in window]
-    amounts = [MOCK_MONTHLY_TREND[month] for month in window]
+    amounts = [trend[month] for month in window]
     hover_labels = [f"{month[:4]} 年 {int(month.split('-')[1])} 月" for month in window]
 
     # 选中月份的柱子用主色，其余月份用低饱和浅蓝。
@@ -291,8 +298,48 @@ def _bar_chart(selected_month: str) -> None:
     )
 
     # 高亮柱只改变颜色，不改变数值；鼠标悬浮可看到完整年月。
-    # TODO: 接入后端接口 GET /api/stats?month={selected_month} -> monthly_trend
+    # TODO: 接入后端接口 GET /api/v1/stats/trend?start&end&granularity=month -> points
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+
+def _load_real_stats(selected_month: str) -> dict:
+    """真实模式：summary + categories + trend 三接口组合成图表数据。"""
+    start_date, end_date = month_range(selected_month)
+    start, end = start_date.isoformat(), end_date.isoformat()
+    summary = api_client.fetch_stats_summary(selected_month) or {}
+    category_data = api_client.fetch_stats_category(start, end) or {}
+
+    trend_start = month_range(shift_month_key(selected_month, -5))[0].isoformat()
+    trend_data = api_client.fetch_stats_trend(trend_start, end, "month") or {}
+
+    categories = []
+    for item in category_data.get("items") or []:
+        try:
+            categories.append((item.get("category") or "其他",
+                               float(item.get("amount") or 0)))
+        except (TypeError, ValueError):
+            continue
+
+    monthly = {}
+    for point in trend_data.get("points") or []:
+        key = str(point.get("period") or "")[:7]
+        if len(key) == 7:
+            try:
+                monthly[key] = float(point.get("amount") or 0)
+            except (TypeError, ValueError):
+                monthly[key] = 0.0
+
+    total = float(summary.get("total_amount")
+                  or category_data.get("total_amount") or 0)
+    if selected_month not in monthly:
+        monthly[selected_month] = total
+
+    return {
+        "records": int(summary.get("count") or 0),
+        "categories": categories,
+        "total": total,
+        "monthly": monthly,
+    }
 
 
 def render() -> None:
@@ -312,20 +359,35 @@ def render() -> None:
     selected_month = st.session_state["stats_month"]
     is_current = selected_month == CURRENT_MONTH
     month_num = int(selected_month.split("-")[1])
-    month_data = MOCK_STATS[selected_month]
-    records = month_data["records"]
+    is_demo = bool(st.session_state.get("demo_mode", True))
+    real_error = None
 
-    # TODO: 接入后端接口 GET /api/stats?month={selected_month}
-    #       目前直接查 MOCK_STATS；接入后在这里请求并把返回值赋给 month_data。
-    categories = month_data["categories"]
-    total = sum(amount for _, amount in categories)
+    if is_demo:
+        month_data = MOCK_STATS[selected_month]
+        records = month_data["records"]
+        categories = month_data["categories"]
+        total = sum(amount for _, amount in categories)
+        monthly = dict(MOCK_MONTHLY_TREND)
+    else:
+        try:
+            data = _load_real_stats(selected_month)
+            records = data["records"]
+            categories = data["categories"]
+            total = data["total"]
+            monthly = data["monthly"]
+        except Exception as exc:
+            real_error = to_error_message(exc)
+            records, categories, total, monthly = 0, [], 0.0, {}
 
     # 计算环比，让“较上月”也跟随月份变化。
-    trend_months = sorted(MOCK_MONTHLY_TREND)
-    trend_index = trend_months.index(selected_month)
+    trend_months = sorted(monthly)
+    if selected_month in trend_months:
+        trend_index = trend_months.index(selected_month)
+    else:
+        trend_index = 0
     if trend_index > 0:
-        prev_total = MOCK_MONTHLY_TREND[trend_months[trend_index - 1]]
-        delta_pct = (total - prev_total) / prev_total * 100
+        prev_total = monthly[trend_months[trend_index - 1]]
+        delta_pct = (total - prev_total) / prev_total * 100 if prev_total else 0
         delta_text = f"较上月 {'+' if delta_pct >= 0 else '-'}{abs(delta_pct):.1f}%"
     else:
         delta_text = "暂无环比数据"
@@ -337,13 +399,10 @@ def render() -> None:
         st.markdown(f'<div class="stats-title">{title}</div>', unsafe_allow_html=True)
         st.markdown(
             f'<div class="stats-sub">{selected_month[:4]} 年 {month_num} 月 · '
-            f'共 {records} 笔记录 · Mock 数据</div>',
+            f'共 {records} 笔记录 · {"Mock 数据" if is_demo else "接口数据"}</div>',
             unsafe_allow_html=True,
         )
     with head_right:
-        # 月份切换只触发前端 rerun，下面的数据全部重新取。
-        # TODO: 接入后端后，改为按 selected_month 请求
-        #       GET /api/stats?month=YYYY-MM，并给列表加载态。
         st.selectbox(
             "查看月份",
             options=month_keys,
@@ -352,6 +411,10 @@ def render() -> None:
             label_visibility="collapsed",
         )
     st.session_state["_stats_month"] = selected_month
+
+    if real_error:
+        st.error(f"⚠️ {real_error}")
+        return
 
     # ── 总支出摘要：金额、笔数、环比全部跟月份联动 ──
     total_label = "本月总支出" if is_current else f"{month_num} 月总支出"
@@ -384,4 +447,4 @@ def render() -> None:
             '<span class="stats-chart-hint">近 6 个月</span></div>',
             unsafe_allow_html=True,
         )
-        _bar_chart(selected_month)
+        _bar_chart(selected_month, monthly)

@@ -117,6 +117,6 @@ def to_error_message(e):
         if getattr(e, "kind", None) == "timeout":
             return "请求超时了，请稍后重试。"
         if getattr(e, "kind", None) == "network":
-            return "无法连接后端服务，请确认服务已启动。"
+            return e.detail or "无法连接后端服务，请确认服务已启动。"
         return e.detail or "操作失败，请稍后重试。"
     return "无法连接后端服务，请确认服务已启动，或到左侧「高级设置」检查后端地址。"

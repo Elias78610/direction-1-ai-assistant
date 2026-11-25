@@ -15,12 +15,22 @@
 当前所有金额/分类/日期/图表/预算均为前端写死的 Mock 数据。
 """
 
+import calendar
 import datetime
 import logging
 import re
+import sys
 import time
 import uuid
 from io import BytesIO
+from pathlib import Path
+
+# 兼容两种启动方式：
+#   1) 在 frontend/ 目录内：streamlit run app.py
+#   2) 在仓库根目录：streamlit run frontend/app.py
+_FRONTEND_ROOT = Path(__file__).resolve().parent
+if str(_FRONTEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(_FRONTEND_ROOT))
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -30,6 +40,8 @@ from components import calendar_view, custom_style, emotion_mascot
 from components import sidebar as sidebar_ui
 from components import stats_view
 from components.style import apply_global_css
+from services import api_client
+from utils import current_month_key, month_range, to_error_message
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +60,9 @@ DEMO_BUDGET = {"budget": 2061.17}
 CATEGORIES = ("餐饮", "交通", "购物", "娱乐", "居住", "医疗", "其他")
 SOURCE_LABELS = {
     "text": "文本记账",
+    "nlp": "自然语言记账",
     "receipt": "小票识别",
+    "ocr": "小票识别",
     "voice": "语音识别",
     "manual": "手动录入",
 }
@@ -60,7 +74,7 @@ QUICK_PROMPTS = (
     "查一下本月预算",
 )
 
-# Mock NLU 的关键词规则（后续由后端 /api/transactions/parse 替代）
+# Mock NLU 的关键词规则（后续由后端 /api/v1/expenses/parse 替代）
 _INCOME_WORDS = ("工资", "收入", "红包", "奖金", "退款")
 _CATEGORY_RULES = (
     ("餐饮", ("吃", "饭", "餐", "咖啡", "奶茶", "外卖", "火锅")),
@@ -76,6 +90,130 @@ _AMOUNT_WITH_UNIT = re.compile(r"(\d+(?:\.\d+)?)\s*(?:块钱|块|元)")
 _AMOUNT_ANY = re.compile(r"(\d+(?:\.\d+)?)")
 _PEOPLE_ARABIC = re.compile(r"(\d+)\s*个?\s*人")
 _PEOPLE_CHINESE = re.compile(r"([一二两三四五六七八九十])\s*个?\s*人")
+
+
+# ═══════════════════════════════════════════════════════════════
+# Demo / 真实接口分支与数据加载
+# ═══════════════════════════════════════════════════════════════
+
+def _is_demo_mode() -> bool:
+    """侧边栏「演示模式」开关：True 走本地 Mock，False 走 api_client。"""
+    return bool(st.session_state.get("demo_mode", True))
+
+
+def _error_text(exc) -> str:
+    """统一把接口异常转成页面友好文案。"""
+    return to_error_message(exc)
+
+
+def _flush_api_error() -> None:
+    """显示并清空本轮接口错误（每个 rerun 只提示一次）。"""
+    message = st.session_state.pop("_api_error", None)
+    if message:
+        st.error(f"⚠️ {message}")
+
+
+def _load_categories() -> list:
+    """类别：Demo 用内置 7 类；真实模式加载 /api/v1/categories（缓存）。"""
+    if _is_demo_mode():
+        return list(CATEGORIES)
+    cached = st.session_state.get("categories_real")
+    if cached:
+        return list(cached)
+    try:
+        data = api_client.fetch_categories()
+        categories = [str(item) for item in data if str(item).strip()] \
+            if isinstance(data, list) else []
+        if categories:
+            st.session_state["categories_real"] = categories
+            return categories
+        st.session_state["_api_error"] = "类别接口返回为空，已暂用内置类别。"
+    except Exception as exc:
+        st.session_state["_api_error"] = _error_text(exc)
+    return list(CATEGORIES)
+
+
+def _categories() -> list:
+    """当前渲染使用的类别列表（真实模式加载失败时回退内置类别）。"""
+    if _is_demo_mode():
+        return list(CATEGORIES)
+    return list(st.session_state.get("categories_real") or CATEGORIES)
+
+
+def _budget_snapshot() -> dict:
+    """预算：Demo 用滑块模拟；真实模式 GET /api/v1/budgets/{month}。"""
+    month = current_month_key()
+    if _is_demo_mode():
+        ratio = float(st.session_state.get("budget_ratio_pct", 85)) / 100
+        budget = float(DEMO_BUDGET["budget"])
+        spent = round(budget * ratio)
+        return {"month": month, "amount": budget, "spent": spent,
+                "ratio": ratio, "usage_percent": ratio * 100,
+                "missing": False}
+    try:
+        data = api_client.fetch_budgets(month) or {}
+        amount = float(data.get("amount") or 0)
+        spent = float(data.get("spent") or 0)
+        usage = data.get("usage_percent")
+        ratio = (float(usage) / 100) if usage is not None else (spent / amount if amount else 0)
+        usage_percent = float(usage) if usage is not None else ratio * 100
+        return {"month": month, "amount": amount, "spent": spent,
+                "ratio": ratio, "usage_percent": usage_percent,
+                "missing": amount <= 0, "raw": data}
+    except api_client.ApiError as exc:
+        if exc.status_code == 404:
+            return {"month": month, "amount": 0.0, "spent": 0.0, "ratio": 0.0,
+                    "usage_percent": 0.0, "missing": True}
+        st.session_state["_api_error"] = _error_text(exc)
+    except Exception as exc:
+        st.session_state["_api_error"] = _error_text(exc)
+    return {"month": month, "amount": 0.0, "spent": 0.0, "ratio": 0.0,
+            "usage_percent": 0.0, "missing": True}
+
+
+def _contract_source(source) -> str:
+    """页面来源 → 契约 source：manual / nlp / ocr。"""
+    mapping = {"text": "nlp", "nlp": "nlp", "receipt": "ocr",
+               "ocr": "ocr", "manual": "manual", "voice": "nlp"}
+    return mapping.get(str(source or "text").lower(), "manual")
+
+
+def _create_expense(amount, category, date_str, note, source, draft=None) -> None:
+    """真实模式新增账目（字段与后端 ExpenseCreate 一致）。"""
+    if _is_demo_mode():
+        return
+    if draft and draft.get("direction") == "income":
+        raise api_client.ApiError(400, "接口契约 v1 仅支持支出记账，收入暂未开放。")
+    contract_source = _contract_source(source)
+    payload = {
+        "amount": f"{float(amount):.2f}",
+        "category": str(category),
+        "spent_at": f"{date_str}T00:00:00",
+        "note": note or None,
+        "source": contract_source,
+        "raw_text": (draft or {}).get("raw_input") or None,
+    }
+    # 后端 ExpenseCreate 当前没有 image_path 字段；OCR 图片仍保留在聊天记录中，
+    # 等后端 Schema 补充后再随创建请求发送。
+    if contract_source == "nlp" and not payload["raw_text"]:
+        payload["raw_text"] = note or "自然语言记账"
+    api_client.create_transaction(payload)
+
+
+def _load_month_expenses(year: int, month: int) -> list:
+    """真实模式：读取指定月份账目列表。"""
+    start = datetime.date(year, month, 1).isoformat()
+    last_day = calendar.monthrange(year, month)[1]
+    end = datetime.date(year, month, last_day).isoformat()
+    data = api_client.fetch_transactions(start_date=start, end_date=end,
+                                         limit=500, offset=0)
+    return list((data or {}).get("items") or [])
+
+
+def _month_bounds(month_key: str) -> tuple:
+    """YYYY-MM → (start_date, end_date) 字符串。"""
+    first, last = month_range(month_key)
+    return first.isoformat(), last.isoformat()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -151,7 +289,7 @@ def _rename_current(title_seed: str) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════
-# Mock NLU（后续替换为 /api/transactions/parse）
+# Mock NLU（后续替换为 /api/v1/expenses/parse）
 # ═══════════════════════════════════════════════════════════════
 
 def _extract_amount(text: str):
@@ -182,8 +320,8 @@ def _guess_category(text: str) -> str:
 def _build_draft(amount, category, note, source, header,
                  direction="expense", is_aa=False,
                  aa_total=None, aa_people=None, aa_per=None, raw_input=""):
-    """构造确认卡片所需的 Mock 草稿。"""
-    if category not in CATEGORIES:
+    """构造确认卡片所需的草稿（Demo 与真实解析共用）。"""
+    if category not in _categories():
         category = "其他"
     return {
         "id": uuid.uuid4().hex[:8],
@@ -203,7 +341,27 @@ def _build_draft(amount, category, note, source, header,
 
 
 def _budget_reply() -> str:
-    # TODO: 接入后端接口 GET /api/budgets/status?month=YYYY-MM
+    """预算意图回复：Demo 用滑块模拟，真实模式读取 /api/v1/budgets/{month}。"""
+    if not _is_demo_mode():
+        try:
+            row = api_client.fetch_budgets(current_month_key()) or {}
+        except api_client.ApiError as exc:
+            if exc.status_code == 404:
+                return "📊 本月还没有设置预算。可在后端预算模块设置后，再问我一次。"
+            raise
+        amount = float(row.get("amount") or 0)
+        spent = float(row.get("spent") or 0)
+        remaining = float(row.get("remaining") or 0)
+        usage = float(row.get("usage_percent") or 0)
+        tail = (f"已超支 **¥{abs(remaining):,.2f}**" if remaining < 0
+                else f"剩余 **¥{remaining:,.2f}**")
+        return (
+            "📊 **本月预算进度**\n\n"
+            f"已用 **{usage:.0f}%**，已支出 **¥{spent:,.2f}** / "
+            f"预算 **¥{amount:,.2f}**，{tail}。\n\n"
+            f"> {row.get('message') or '数据来自 GET /api/v1/budgets/{month}。'}"
+        )
+
     ratio_value = st.session_state.get("budget_ratio", 0.85)
     ratio = float(ratio_value) if ratio_value is not None else 0.85
     budget = float(DEMO_BUDGET["budget"])
@@ -218,12 +376,29 @@ def _budget_reply() -> str:
         "- 餐饮 **28.5%**\n"
         "- 购物 **17.1%**\n"
         "- 娱乐休闲 **14.8%**\n\n"
-        "> 当前为演示数据，接入后端后读取 /api/budgets/status。"
+        "> 当前为演示数据。"
     )
 
 
 def _analysis_reply() -> str:
-    # TODO: 接入后端接口 GET /api/stats/category 与 GET /api/stats/monthly
+    """消费分析回复：Demo 用固定文案，真实模式读取统计接口。"""
+    if not _is_demo_mode():
+        month = current_month_key()
+        start, end = _month_bounds(month)
+        summary = api_client.fetch_stats_summary(month) or {}
+        category_data = api_client.fetch_stats_category(start, end) or {}
+        items = category_data.get("items") or []
+        total = summary.get("total_amount") or category_data.get("total_amount") or "0.00"
+        count = summary.get("count") or 0
+        lines = [f"📊 本月共 **{count} 笔**消费，合计 **¥{float(total):,.2f}**：", ""]
+        for item in items[:5]:
+            amount = float(item.get("amount") or 0)
+            ratio = float(item.get("ratio") or 0) * 100
+            lines.append(f"- {item.get('category') or '未分类'} **{amount:,.2f} 元**（{ratio:.1f}%）")
+        if len(lines) == 2:
+            lines.append("- 暂无分类数据")
+        return "\n".join(lines)
+
     return (
         "📊 本月共 **11 笔**消费，合计 **¥1,752.00**：\n\n"
         "- 餐饮 **28.5%**\n"
@@ -303,7 +478,8 @@ def mock_nlu(text: str) -> dict:
 # 成功气泡 / 占位小票
 # ═══════════════════════════════════════════════════════════════
 
-def _success_text(amount, category, date_str, note="", draft=None, source="text") -> str:
+def _success_text(amount, category, date_str, note="", draft=None, source="text",
+                  demo=True) -> str:
     """确认入库后的只读气泡文案。"""
     lines = ["✅ 已成功记录", ""]
     if draft and draft.get("direction") == "income":
@@ -321,7 +497,10 @@ def _success_text(amount, category, date_str, note="", draft=None, source="text"
             f"人均 ¥{float(amount):,.2f}"
         )
     lines.append(f"- 来源：{SOURCE_LABELS.get(source, source)}")
-    lines += ["", "> 当前为前端 Mock 数据，尚未写入真实账本。"]
+    if demo:
+        lines += ["", "> 当前为前端 Mock 数据，尚未写入真实账本。"]
+    else:
+        lines += ["", "> 已写入后端账本。"]
     return "\n".join(lines)
 
 
@@ -390,7 +569,10 @@ def _scroll_to_bottom() -> None:
 
 def _render_attachment(message: dict) -> None:
     if message.get("type") == "image":
-        st.image(message["data"], width=220)
+        try:
+            st.image(message["data"], width=220)
+        except Exception:
+            st.caption("图片预览失败，但已收到图片。")
         st.caption(f"📷 {message.get('name', '示例小票.png')}")
     elif message.get("type") == "audio":
         st.audio(message["data"], format="audio/wav")
@@ -433,6 +615,7 @@ def _render_draft_card() -> None:
         return
 
     draft_id = draft["id"]
+    categories = _categories()
     with st.container(border=True, key="draft_card"):
         st.markdown(
             f'<div class="draft-title">🤖 {draft.get("header", "解析结果，请确认：")}</div>',
@@ -457,10 +640,10 @@ def _render_draft_card() -> None:
                 key=f"draft_amount_{draft_id}",
             )
         with col2:
-            category_index = (list(CATEGORIES).index(draft["category"])
-                              if draft.get("category") in CATEGORIES else len(CATEGORIES) - 1)
+            category_index = (categories.index(draft["category"])
+                              if draft.get("category") in categories else len(categories) - 1)
             category = st.selectbox(
-                "分类", CATEGORIES, index=category_index,
+                "分类", categories, index=category_index,
                 key=f"draft_category_{draft_id}",
             )
 
@@ -489,10 +672,20 @@ def _render_draft_card() -> None:
             if amount <= 0:
                 st.error("金额需要大于 0，请修改后再确认。")
             else:
-                # TODO: 接入后端接口 POST /api/transactions
-                content = _success_text(
-                    amount, category, record_date.isoformat(), note,
-                    draft=draft, source=draft.get("source", "text"))
+                demo = _is_demo_mode()
+                try:
+                    if not demo:
+                        with st.spinner("正在写入后端账本..."):
+                            _create_expense(
+                                amount, category, record_date.isoformat(), note,
+                                draft.get("source", "text"), draft)
+                    content = _success_text(
+                        amount, category, record_date.isoformat(), note,
+                        draft=draft, source=draft.get("source", "text"),
+                        demo=demo)
+                except Exception as exc:
+                    st.error(f"⚠️ {_error_text(exc)}")
+                    return
                 st.session_state.messages.append(
                     {"role": "assistant", "content": content, "type": "success"})
                 st.session_state.pop("pending_draft", None)
@@ -513,10 +706,27 @@ def _render_uploaders() -> None:
     col1, col2, col3, _ = st.columns([1.1, 1.1, 1.35, 2.0])
 
     with col1:
-        if st.button("📷 上传小票", key="mock_receipt",
-                     use_container_width=True):
-            st.session_state.pending_receipt = True
-            st.rerun()
+        if _is_demo_mode():
+            if st.button("📷 上传小票", key="mock_receipt",
+                         use_container_width=True):
+                st.session_state.pending_receipt = True
+                st.rerun()
+        else:
+            with st.popover("📷 上传小票", use_container_width=True):
+                uploaded = st.file_uploader(
+                    "选择小票图片",
+                    type=["jpg", "jpeg", "png", "webp"],
+                    key=f"receipt_upload_{round_no}",
+                )
+                if uploaded is not None and st.button(
+                        "开始识别", key=f"receipt_ocr_{round_no}",
+                        use_container_width=True):
+                    st.session_state.pending_receipt = {
+                        "data": uploaded.getvalue(),
+                        "name": uploaded.name,
+                    }
+                    st.session_state.upload_round = round_no + 1
+                    st.rerun()
 
     with col2:
         with st.popover("🎤 语音上传", use_container_width=True):
@@ -542,7 +752,7 @@ def _render_uploaders() -> None:
                     "金额（元）", min_value=0.0, step=1.0,
                     format="%.2f", key="manual_amount")
                 manual_category = st.selectbox(
-                    "分类", CATEGORIES, key="manual_category")
+                    "分类", _categories(), key="manual_category")
                 manual_date = st.date_input(
                     "日期", value=datetime.date.today(), key="manual_date")
                 submitted = st.form_submit_button(
@@ -551,15 +761,24 @@ def _render_uploaders() -> None:
                 if manual_amount <= 0:
                     st.error("金额需要大于 0。")
                 else:
-                    # TODO: 接入后端接口 POST /api/transactions
                     date_str = manual_date.isoformat()
+                    demo = _is_demo_mode()
                     st.session_state.messages.append({
                         "role": "user",
                         "content": f"📝 手动记一笔：{manual_category} ¥{manual_amount:,.2f}，{date_str}",
                     })
+                    if not demo:
+                        try:
+                            with st.spinner("正在写入后端账本..."):
+                                _create_expense(
+                                    manual_amount, manual_category, date_str,
+                                    "", "manual")
+                        except Exception as exc:
+                            st.error(f"⚠️ {_error_text(exc)}")
+                            return
                     content = _success_text(
                         manual_amount, manual_category, date_str,
-                        source="manual")
+                        source="manual", demo=demo)
                     st.session_state.messages.append(
                         {"role": "assistant", "content": content, "type": "success"})
                     st.session_state.force_scroll = True
@@ -569,6 +788,52 @@ def _render_uploaders() -> None:
 # ═══════════════════════════════════════════════════════════════
 # 对话处理
 # ═══════════════════════════════════════════════════════════════
+
+def _looks_aa(prompt: str) -> bool:
+    return any(keyword in prompt for keyword in ("平摊", "几个人")) or "aa" in prompt.lower()
+
+
+def _real_parse_result(prompt: str) -> dict:
+    """真实模式 NLP：POST /api/v1/expenses/parse → 确认卡片。"""
+    data = api_client.parse_transaction_text(prompt) or {}
+    raw_amount = data.get("amount")
+    category = data.get("category")
+    if raw_amount is None:
+        return {"intent": "help",
+                "reply": data.get("message") or "没有识别出金额，请换一种说法，或改用手动录入。"}
+    amount = float(raw_amount)
+    spent_at = str(data.get("spent_at") or "")
+    date_str = spent_at[:10] if len(spent_at) >= 10 else datetime.date.today().isoformat()
+    draft = _build_draft(
+        amount, category or "其他", data.get("note") or "", "nlp",
+        "已解析这段描述，请确认：",
+        direction="expense",
+        raw_input=data.get("raw_text") or prompt,
+    )
+    draft["date"] = date_str
+    draft["confidence"] = data.get("confidence")
+    if _looks_aa(prompt):
+        people = _extract_people(prompt) or 2
+        per = amount / people
+        draft = _build_draft(
+            per, category or "其他", data.get("note") or "", "nlp",
+            "已解析这段描述，请确认：",
+            direction="expense", is_aa=True,
+            aa_total=amount, aa_people=people, aa_per=per,
+            raw_input=data.get("raw_text") or prompt,
+        )
+        draft["date"] = date_str
+    return {"intent": "record", "draft": draft}
+
+
+def _real_chat_result(prompt: str) -> dict:
+    """真实模式意图分支：预算 / 分析 / 自然语言记账。"""
+    if any(keyword in prompt for keyword in ("预算", "超支", "还剩多少")):
+        return {"intent": "budget", "reply": _budget_reply()}
+    if any(keyword in prompt for keyword in ("分析", "结构", "统计", "多少")):
+        return {"intent": "analysis", "reply": _analysis_reply()}
+    return _real_parse_result(prompt)
+
 
 def _respond_text(prompt: str) -> None:
     prompt = (prompt or "").strip()
@@ -584,11 +849,17 @@ def _respond_text(prompt: str) -> None:
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # 任务 2：思考中阻塞 2 秒
+    demo = _is_demo_mode()
     with st.spinner("AI正在努力解析..."):
-        time.sleep(2)
-        # TODO: 接入后端接口 POST /api/transactions/parse
-        result = mock_nlu(prompt)
+        if demo:
+            time.sleep(2)
+            result = mock_nlu(prompt)
+        else:
+            try:
+                result = _real_chat_result(prompt)
+            except Exception as exc:
+                result = {"intent": "error",
+                          "reply": f"⚠️ {_error_text(exc)}"}
 
     if result.get("draft"):
         draft = result["draft"]
@@ -607,7 +878,7 @@ def _respond_text(prompt: str) -> None:
 
 
 def _respond_upload(upload: dict) -> None:
-    """语音上传后的 Mock 流程：语音条 → 解析中 → 确认卡片。"""
+    """语音上传：Demo 用 Mock 草稿；真实模式提示本期契约未规划。"""
     messages = st.session_state.messages
     is_first = len(messages) == 0
     message = {
@@ -624,9 +895,16 @@ def _respond_upload(upload: dict) -> None:
     with st.chat_message("user"):
         _render_attachment(message)
 
+    if not _is_demo_mode():
+        reply = ("语音转写本期接口契约未规划，真实模式暂不可用；"
+                 "可先切回「演示模式」预览，或改用文字/小票/手动记账。")
+        with st.chat_message("assistant"):
+            _type_reply(f"⚠️ {reply}")
+        messages.append({"role": "assistant", "content": f"⚠️ {reply}"})
+        return
+
     with st.spinner("AI正在努力解析..."):
         time.sleep(2)
-        # TODO: 接入后端接口 POST /api/voice/transcribe，用真实文字替换下方 Mock
         draft = _build_draft(
             45, "餐饮", "语音识别", "voice",
             "收到语音，已识别以下信息，请确认：",
@@ -638,17 +916,27 @@ def _respond_upload(upload: dict) -> None:
     st.rerun()
 
 
-def _respond_receipt() -> None:
-    """模拟上传小票：占位图 → 识别中 → 确认卡片。"""
+def _respond_receipt(upload=None) -> None:
+    """小票上传：Demo 用占位图；真实模式调用 /api/v1/receipts/ocr。"""
     messages = st.session_state.messages
     is_first = len(messages) == 0
-    image = _placeholder_receipt()
+    demo = _is_demo_mode()
+
+    if demo:
+        image = _placeholder_receipt()
+        filename = "示例小票.png"
+    else:
+        if not isinstance(upload, dict) or not upload.get("data"):
+            return
+        image = upload["data"]
+        filename = upload.get("name") or "小票.png"
+
     message = {
         "role": "user",
-        "content": "📷 示例小票",
+        "content": "📷 示例小票" if demo else "📷 小票",
         "type": "image",
         "data": image,
-        "name": "示例小票.png",
+        "name": filename,
     }
     messages.append(message)
     if is_first:
@@ -658,13 +946,41 @@ def _respond_receipt() -> None:
         _render_attachment(message)
 
     with st.spinner("AI正在努力解析..."):
-        time.sleep(2)
-        # TODO: 接入后端接口 POST /api/receipts/ocr，用真实 draft 替换下方 Mock
-        draft = _build_draft(
-            128, "餐饮", "小票识别", "receipt",
-            "收到小票，已识别以下信息，请确认：",
-            direction="expense",
-        )
+        if demo:
+            time.sleep(2)
+            draft = _build_draft(
+                128, "餐饮", "小票识别", "receipt",
+                "收到小票，已识别以下信息，请确认：",
+                direction="expense",
+            )
+        else:
+            try:
+                result = api_client.ocr_receipt(image, filename) or {}
+            except Exception as exc:
+                st.error(f"⚠️ {_error_text(exc)}")
+                return
+            items = result.get("items") or []
+            if not items:
+                st.error("小票没有识别出可记账的条目，请换一张图片或改用手动录入。")
+                return
+            item = items[0]
+            spent_at = str(item.get("spent_at") or "")
+            date_str = spent_at[:10] if len(spent_at) >= 10 else datetime.date.today().isoformat()
+            draft = _build_draft(
+                float(item.get("amount") or 0),
+                item.get("category") or "其他",
+                item.get("note") or "",
+                "ocr",
+                "收到小票，已识别以下信息，请确认：",
+                direction="expense",
+                raw_input=result.get("raw_text") or "",
+            )
+            draft["date"] = date_str
+            draft["image_path"] = result.get("image_path")
+            draft["confidence"] = item.get("confidence")
+            if len(items) > 1:
+                draft["header"] = f"识别到 {len(items)} 笔，请先确认第 1 笔："
+
     draft["session_id"] = st.session_state.current_session
     st.session_state.pending_draft = draft
     st.session_state.force_scroll = True
@@ -701,7 +1017,7 @@ def _render_chat_view() -> None:
         "输入你的记账需求...", disabled=has_draft)
 
     if pending_receipt:
-        _respond_receipt()
+        _respond_receipt(pending_receipt)
     elif pending_upload:
         _respond_upload(pending_upload)
     elif pending_prompt:
@@ -724,18 +1040,26 @@ def _render_chat_view() -> None:
 
 # ── 初始化 ──
 _init_state()
+st.session_state["api_base_url"] = config.API_BASE_URL
 
-# 预算使用率：默认 85%，高级设置滑块可调；驱动侧栏进度/情绪球/超支警告
-ratio_pct = st.session_state.get("budget_ratio_pct", 85)
-st.session_state["budget_ratio"] = ratio_pct / 100
-spent = DEMO_BUDGET["budget"] * st.session_state["budget_ratio"]
+# 先按 demo_mode 加载类别与预算；真实模式任何失败都在页面顶部友好提示
+demo_mode = _is_demo_mode()
+_load_categories()
+budget_snapshot = _budget_snapshot()
+ratio = float(budget_snapshot["ratio"])
+st.session_state["budget_ratio"] = ratio
+if not demo_mode:
+    st.session_state["budget_ratio_pct"] = min(120, max(0, int(round(ratio * 100))))
 
 new_chat, selected_session = sidebar_ui.render_sidebar(
     sessions=st.session_state.sessions,
     current_id=st.session_state.current_session,
-    spent=spent,
-    budget=DEMO_BUDGET["budget"],
+    spent=float(budget_snapshot["spent"]),
+    budget=float(budget_snapshot["amount"]),
+    demo_mode=demo_mode,
+    budget_missing=bool(budget_snapshot.get("missing")),
 )
+_flush_api_error()
 
 if new_chat:
     current = _current_session()
@@ -761,7 +1085,16 @@ if last_mode is not None and last_mode != view_mode and view_mode == "💬 对�
 st.session_state["_last_view_mode"] = view_mode
 
 if view_mode == "📅 日历":
-    calendar_view.render()
+    if demo_mode:
+        calendar_view.render()
+    else:
+        today = datetime.date.today()
+        try:
+            month_records = _load_month_expenses(today.year, today.month)
+        except Exception as exc:
+            st.error(f"⚠️ {_error_text(exc)}")
+            month_records = []
+        calendar_view.render(records=month_records, year=today.year, month=today.month)
 elif view_mode == "📊 统计":
     stats_view.render()
 else:
