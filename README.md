@@ -11,7 +11,7 @@
 | 自然语言记账 + 小票 / 截图 OCR 录入 | 待开发 |
 | 消费自动分类与统计 | 统计接口已完成（2026-11-25），自动分类待接入 NLP |
 | 自然语言查账（时间范围 + 类别解析） | 待开发 |
-| 月度预算设定与超支提醒 | 待开发 |
+| 月度预算设定与超支提醒 | 已完成（后端 + 前端页面） |
 | 环境搭建（前后端 + MySQL + Docker） | 已完成 |
 
 考核要求与交付清单见 [docs/assessment-direction-1.md](direction-1-ai-assistant/docs/assessment-direction-1.md)。

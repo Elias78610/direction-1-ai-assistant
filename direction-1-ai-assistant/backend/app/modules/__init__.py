@@ -3,6 +3,7 @@
 新增模型时，在这里补充 import，main.py 中的 create_all 才会建表。
 """
 
+from app.modules.budget.models import Budget
 from app.modules.expense.models import Expense
 
-__all__ = ["Expense"]
+__all__ = ["Budget", "Expense"]
