@@ -47,7 +47,7 @@ def budget_banner(status):
         st.markdown(
             '<div class="ledger-banner ledger-banner-info">'
             f'<span class="b-strong">本月尚未设置预算</span>　本月支出 ¥{format_yuan(spent)}，'
-            '可在下方表单中设置月度总预算与分类预算。</div>',
+            '可在下方表单中设置月度总预算。</div>',
             unsafe_allow_html=True)
         return
 

@@ -374,6 +374,7 @@ GET /api/v1/stats/trend?start=2026-11-01&end=2026-11-30&granularity=day
 |---|---|---|
 | `PUT` | `/api/v1/budgets/{month}` | 设置或更新某月预算 |
 | `GET` | `/api/v1/budgets/{month}` | 查询预算与执行情况 |
+| `DELETE` | `/api/v1/budgets/{month}` | 取消某月预算，成功 `204`，未设置返回 `404` |
 
 设置请求：
 
@@ -402,6 +403,7 @@ GET /api/v1/stats/trend?start=2026-11-01&end=2026-11-30&granularity=day
 - 超支时 `remaining` 为负数
 - 未设置预算返回 `404 NOT_FOUND`
 - 预算金额必须 > 0，两位小数
+- 取消预算使用 `DELETE /api/v1/budgets/{month}`，不要传 `amount=0`
 
 ### 4.2 自然语言记账
 

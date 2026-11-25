@@ -1,16 +1,23 @@
 import calendar
+import logging
+import re
 from datetime import date, datetime, time
 from decimal import Decimal, ROUND_HALF_UP
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppException
 from app.modules.budget.repository import BudgetRepository
-from app.modules.budget.schemas import BudgetOut
+from app.modules.budget.schemas import MONTH_PATTERN, BudgetOut
 
 # 使用率达到 80% 进入预警；超过 100% 才算超支
 WARNING_RATIO = Decimal("0.8")
 PERCENT = Decimal("0.01")
+
+logger = logging.getLogger(__name__)
+
+MONTH_RE = re.compile(MONTH_PATTERN)
 
 
 class BudgetService:
@@ -28,16 +35,40 @@ class BudgetService:
 
         budget = self.repo.get(month)
         if budget is None:
-            self.repo.create(month, amount)   # 首次设置：新增
+            # 首次设置：新增。并发下两个请求可能同时读到 None，
+            # 后提交的一方会触发 month 唯一索引冲突，此时回滚并改为更新。
+            self.repo.create(month, amount)
+            try:
+                self.db.commit()
+            except IntegrityError:
+                self.db.rollback()
+                budget = self.repo.get(month)
+                if budget is None:
+                    raise
+                logger.info("预算并发写入冲突，已转为更新：month=%s", month)
+                self.repo.update(budget, amount)
+                self.db.commit()
         else:
             self.repo.update(budget, amount)  # 已存在：覆盖金额
-        self.db.commit()
+            self.db.commit()
 
         # 写入后统一走查询逻辑，返回同样的执行情况结构
         result = self.get_status(month)
         # 刚写入的预算一定存在
         assert result is not None
         return result
+
+    def delete_budget(self, month: str) -> bool:
+        """取消预算：成功返回 True，该月未设置预算返回 False。"""
+        # 与设置接口一致，先校验月份，避免非法月份走到数据库
+        self._month_range(month)
+
+        budget = self.repo.get(month)
+        if budget is None:
+            return False
+        self.repo.delete(budget)
+        self.db.commit()
+        return True
 
     def get_status(self, month: str) -> BudgetOut | None:
         """查询预算与执行情况，未设置预算返回 None。"""
@@ -83,6 +114,13 @@ class BudgetService:
         路由层已经用正则限制格式，这里再做一层防御，
         即使 service 被直接调用也不会因为非法年份抛 500。
         """
+        if not isinstance(month, str) or not MONTH_RE.fullmatch(month):
+            raise AppException(
+                code="BAD_REQUEST",
+                message="预算月份不合法，格式应为 YYYY-MM",
+                status_code=400,
+            )
+
         try:
             year, mon = int(month[:4]), int(month[5:7])
             first = date(year, mon, 1)

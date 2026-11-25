@@ -50,3 +50,9 @@ def db_session():
         yield session
     finally:
         session.close()
+
+
+@pytest.fixture
+def db_session_factory():
+    """返回 session 工厂，用于模拟多个并发请求各自的数据库会话。"""
+    return TestSession

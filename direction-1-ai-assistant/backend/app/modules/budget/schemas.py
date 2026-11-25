@@ -3,6 +3,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# 预算月份格式：1900-2099 年，月份两位补零。
+# 路由和 service 共用，避免两处规则不一致。
+MONTH_PATTERN = r"^(19|20)\d{2}-(0[1-9]|1[0-2])$"
+
 
 class BudgetSet(BaseModel):
     """设置月度预算请求。"""
