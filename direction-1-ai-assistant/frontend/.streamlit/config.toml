@@ -1,0 +1,9 @@
+# Streamlit 全局主题（极简浅色对话风）
+# 颜色与 components/style.py 保持一致：主色 #4A7BE8，背景 #F9FAFB
+[theme]
+base = "light"
+primaryColor = "#4A7BE8"
+backgroundColor = "#F9FAFB"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#1F2937"
+font = "sans serif"
