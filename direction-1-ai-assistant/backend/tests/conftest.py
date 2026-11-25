@@ -40,3 +40,13 @@ def reset_database():
 @pytest.fixture
 def client():
     return TestClient(app)
+
+
+@pytest.fixture
+def db_session():
+    """直接访问测试库，用于断言没有产生脏数据。"""
+    session = TestSession()
+    try:
+        yield session
+    finally:
+        session.close()

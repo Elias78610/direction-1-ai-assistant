@@ -1,6 +1,13 @@
 """预算接口回归测试。"""
 
+from decimal import Decimal
+
 import pytest
+
+from app.core.exceptions import AppException
+from app.modules.budget.models import Budget
+from app.modules.budget.repository import BudgetRepository
+from app.modules.budget.service import BudgetService
 
 BASE = "/api/v1"
 
@@ -52,7 +59,10 @@ def test_unset_month_returns_404(client):
     assert body["message"] == "该月未设置预算"
 
 
-@pytest.mark.parametrize("month", ["2026-13", "2026-00", "2026-1", "abc"])
+@pytest.mark.parametrize(
+    "month",
+    ["2026-13", "2026-00", "2026-1", "abc", "0000-01", "3000-01"],
+)
 def test_invalid_month_returns_422(client, month):
     """月份必须是补零的 YYYY-MM。"""
     assert set_budget(client, month, "100.00").status_code == 422
@@ -62,6 +72,21 @@ def test_invalid_month_returns_422(client, month):
 def test_invalid_amount_returns_422(client, amount):
     """预算金额必须大于 0，且最多两位小数。"""
     assert set_budget(client, "2026-11", amount).status_code == 422
+
+
+def test_year_zero_returns_422_without_dirty_row(client, db_session):
+    """0000 年由路径正则拦截，返回 422，且不能写入任何预算记录。"""
+    assert set_budget(client, "0000-01", "100.00").status_code == 422
+    assert client.get(f"{BASE}/budgets/0000-01").status_code == 422
+    assert db_session.query(Budget).count() == 0
+
+
+def test_service_rejects_invalid_month_before_write(db_session):
+    """即使绕过路由直接调用 service，也应在写库前失败。"""
+    service = BudgetService(BudgetRepository(db_session), db_session)
+    with pytest.raises(AppException):
+        service.set_budget("0000-01", Decimal("100.00"))
+    assert db_session.query(Budget).count() == 0
 
 
 def test_extra_field_rejected(client):

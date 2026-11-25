@@ -4,6 +4,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy.orm import Session
 
+from app.core.exceptions import AppException
 from app.modules.budget.repository import BudgetRepository
 from app.modules.budget.schemas import BudgetOut
 
@@ -21,6 +22,10 @@ class BudgetService:
 
     def set_budget(self, month: str, amount: Decimal) -> BudgetOut:
         """设置预算，同月重复设置视为更新。"""
+        # 先校验月份再写库：非法月份必须在产生任何写入之前失败，
+        # 否则 commit 后再计算状态会留下脏数据
+        self._month_range(month)
+
         budget = self.repo.get(month)
         if budget is None:
             self.repo.create(month, amount)   # 首次设置：新增
@@ -73,10 +78,22 @@ class BudgetService:
 
     @staticmethod
     def _month_range(month: str) -> tuple[datetime, datetime]:
-        """YYYY-MM → 当月第一天 00:00:00 到月末 23:59:59。"""
-        year, mon = int(month[:4]), int(month[5:7])
-        first = date(year, mon, 1)
-        last_day = calendar.monthrange(year, mon)[1]
+        """YYYY-MM → 当月第一天 00:00:00 到月末 23:59:59。
+
+        路由层已经用正则限制格式，这里再做一层防御，
+        即使 service 被直接调用也不会因为非法年份抛 500。
+        """
+        try:
+            year, mon = int(month[:4]), int(month[5:7])
+            first = date(year, mon, 1)
+            last_day = calendar.monthrange(year, mon)[1]
+        except (TypeError, ValueError) as exc:
+            raise AppException(
+                code="BAD_REQUEST",
+                message="预算月份不合法，格式应为 YYYY-MM",
+                status_code=400,
+            ) from exc
+
         return (
             datetime.combine(first, time.min),
             datetime.combine(date(year, mon, last_day), time(23, 59, 59)),
