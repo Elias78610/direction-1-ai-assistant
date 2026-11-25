@@ -521,14 +521,32 @@ def fetch_budgets(month):
 
 
 def save_budget(month, amount):
-    """PUT /api/v1/budgets/{month} —— 设置/更新月度总预算。"""
+    """PUT /api/v1/budgets/{month} —— 设置/更新月度总预算。
+
+    金额 <= 0 表示取消该月预算，改为调用 DELETE 接口。
+    """
     if amount is None:
         raise ApiError(422, "预算金额不能为空。")
+    if Decimal(str(amount)) <= 0:
+        try:
+            delete_budget(month)
+        except ApiError as exc:
+            # 本来就没有预算，视为取消成功
+            if exc.status_code != 404:
+                raise
+        return {}
     if is_demo_mode():
         payload = {"month": month, "total_budget_cents": int(Decimal(str(amount)) * 100)}
         return _demo_api().save_budgets(payload)
     return _request("PUT", config.PATH_BUDGET_ITEM.format(month=month),
                     json={"amount": _amount_str(amount)})
+
+
+def delete_budget(month):
+    """DELETE /api/v1/budgets/{month} —— 取消月度预算。"""
+    if is_demo_mode():
+        return _demo_api().delete_budgets(month)
+    return _request("DELETE", config.PATH_BUDGET_ITEM.format(month=month))
 
 
 def save_budgets(payload):
@@ -544,7 +562,38 @@ def save_budgets(payload):
 
 
 def fetch_budget_status(month):
-    """兼容旧页面入口：v1 已把状态合并到 GET /budgets/{month}。"""
+    """兼容 banner 组件：把 v1 预算结构转成 total/level 结构。"""
     if is_demo_mode():
         return _demo_api().fetch_budget_status(month)
-    return fetch_budgets(month)
+    try:
+        data = fetch_budgets(month)
+    except ApiError as exc:
+        if exc.status_code == 404:
+            # 未设置预算：banner 显示中性提示，支出取统计总览
+            spent = Decimal("0")
+            try:
+                summary = fetch_stats_summary(month)
+                spent = Decimal(str(summary.get("total_amount") or 0))
+            except Exception:
+                pass
+            return {"month": month,
+                    "total": {"budget_cents": 0,
+                              "spent_cents": int(spent * 100),
+                              "ratio": None, "level": None}}
+        raise
+
+    amount = Decimal(str(data.get("amount") or 0))
+    spent = Decimal(str(data.get("spent") or 0))
+    usage = data.get("usage_percent")
+    if usage is not None:
+        ratio = float(usage) / 100
+    else:
+        ratio = float(spent / amount) if amount else 0.0
+    level = {"normal": "normal", "warning": "warn", "exceeded": "over"}.get(
+        data.get("status"))
+
+    return {"month": month,
+            "total": {"budget_cents": int(amount * 100),
+                      "spent_cents": int(spent * 100),
+                      "ratio": ratio,
+                      "level": level}}

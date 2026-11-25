@@ -375,8 +375,32 @@ def query_accounts(question):
 # ─────────────────────────────────────────────
 
 def fetch_budgets(month):
-    """GET /api/budgets?month=YYYY-MM —— 演示预算 + 执行情况。"""
-    return _budgets_with_status(month)
+    """GET /api/v1/budgets/{month} —— 演示预算，返回 v1 结构。"""
+    raw = _budgets_with_status(month)
+    total = raw["items"][0]
+    amount = total["budget_cents"] / 100
+    spent = total["spent_cents"] / 100
+    remaining = amount - spent
+    ratio = total["ratio"]
+    if ratio is None:
+        status = "normal"
+        usage = 0.0
+    elif ratio > 1:
+        status = "exceeded"
+        usage = ratio * 100
+    elif ratio >= config.BUDGET_WARN_RATIO:
+        status = "warning"
+        usage = ratio * 100
+    else:
+        status = "normal"
+        usage = ratio * 100
+    return {"month": month,
+            "amount": f"{amount:.2f}",
+            "spent": f"{spent:.2f}",
+            "remaining": f"{remaining:.2f}",
+            "usage_percent": round(usage, 2),
+            "status": status,
+            "message": ""}
 
 
 def save_budgets(payload):
@@ -391,6 +415,20 @@ def save_budgets(payload):
                              for c in (payload.get("category_budgets") or [])],
     }
     return _budgets_with_status(month)
+
+
+def delete_budgets(month):
+    """DELETE —— 演示中把该月预算置为 0。
+
+    不能直接 pop，否则 _budgets_with_status 会回落到默认演示预算，
+    看起来像「取消没生效」。
+    """
+    _MOCK_BUDGETS[month] = {
+        "month": month,
+        "total_budget_cents": 0,
+        "category_budgets": [],
+    }
+    return {}
 
 
 def _budgets_with_status(month):

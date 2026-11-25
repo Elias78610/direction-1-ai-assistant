@@ -29,6 +29,10 @@ class BudgetRepository:
         budget.amount = amount
         return budget
 
+    def delete(self, budget: Budget) -> None:
+        """删除预算记录，事务由 service 提交。"""
+        self.db.delete(budget)
+
     def sum_spent(self, start: datetime, end: datetime) -> Decimal:
         """统计时间范围内的支出总额，没有记录时返回 0.00。"""
         stmt = select(func.sum(Expense.amount)).where(

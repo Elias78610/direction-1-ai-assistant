@@ -6,15 +6,19 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import NotFoundError
 from app.db.session import get_db
 from app.modules.budget.repository import BudgetRepository
-from app.modules.budget.schemas import BudgetOut, BudgetSet
+from app.modules.budget.schemas import MONTH_PATTERN, BudgetOut, BudgetSet
 from app.modules.budget.service import BudgetService
 
 router = APIRouter(prefix="/budgets", tags=["预算"])
 
-# 路径参数校验：只接受 YYYY-MM，例如 2026-11，非法格式由 FastAPI 返回 422
+# 路径参数校验：只接受 1900-2099 年的 YYYY-MM，例如 2026-11。
+# 限制年份是为了避免 0000 这类 Python date 不支持的年份进入 service。
 MonthPath = Annotated[
     str,
-    Path(pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="预算月份，格式 YYYY-MM"),
+    Path(
+        pattern=MONTH_PATTERN,
+        description="预算月份，格式 YYYY-MM，年份范围 1900-2099",
+    ),
 ]
 
 
@@ -43,3 +47,13 @@ def get_budget(
     if result is None:
         raise NotFoundError("该月未设置预算")
     return result
+
+
+@router.delete("/{month}", status_code=204, summary="取消月度预算")
+def delete_budget(
+    month: MonthPath,
+    service: Annotated[BudgetService, Depends(get_service)],
+) -> None:
+    """取消某月预算，未设置预算返回 404。"""
+    if not service.delete_budget(month):
+        raise NotFoundError("该月未设置预算")

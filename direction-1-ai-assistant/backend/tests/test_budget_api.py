@@ -1,6 +1,13 @@
 """预算接口回归测试。"""
 
+from decimal import Decimal
+
 import pytest
+
+from app.core.exceptions import AppException
+from app.modules.budget.models import Budget
+from app.modules.budget.repository import BudgetRepository
+from app.modules.budget.service import BudgetService
 
 BASE = "/api/v1"
 
@@ -52,7 +59,10 @@ def test_unset_month_returns_404(client):
     assert body["message"] == "该月未设置预算"
 
 
-@pytest.mark.parametrize("month", ["2026-13", "2026-00", "2026-1", "abc"])
+@pytest.mark.parametrize(
+    "month",
+    ["2026-13", "2026-00", "2026-1", "abc", "0000-01", "3000-01"],
+)
 def test_invalid_month_returns_422(client, month):
     """月份必须是补零的 YYYY-MM。"""
     assert set_budget(client, month, "100.00").status_code == 422
@@ -62,6 +72,72 @@ def test_invalid_month_returns_422(client, month):
 def test_invalid_amount_returns_422(client, amount):
     """预算金额必须大于 0，且最多两位小数。"""
     assert set_budget(client, "2026-11", amount).status_code == 422
+
+
+def test_year_zero_returns_422_without_dirty_row(client, db_session):
+    """0000 年由路径正则拦截，返回 422，且不能写入任何预算记录。"""
+    assert set_budget(client, "0000-01", "100.00").status_code == 422
+    assert client.get(f"{BASE}/budgets/0000-01").status_code == 422
+    assert db_session.query(Budget).count() == 0
+
+
+@pytest.mark.parametrize("month", ["0000-01", "2026-1", "2026-13"])
+def test_service_rejects_invalid_month_before_write(db_session, month):
+    """即使绕过路由直接调用 service，也应在写库前失败。"""
+    service = BudgetService(BudgetRepository(db_session), db_session)
+    with pytest.raises(AppException):
+        service.set_budget(month, Decimal("100.00"))
+    assert db_session.query(Budget).count() == 0
+
+
+def test_delete_budget(client):
+    """已设置的预算可以取消，取消后查询返回 404。"""
+    assert set_budget(client, "2026-11", "1000.00").status_code == 200
+    assert client.delete(f"{BASE}/budgets/2026-11").status_code == 204
+    assert client.get(f"{BASE}/budgets/2026-11").status_code == 404
+
+
+def test_delete_unset_month_returns_404(client):
+    """取消未设置的预算返回 404。"""
+    assert client.delete(f"{BASE}/budgets/2099-02").status_code == 404
+
+
+def test_delete_invalid_month_returns_422(client):
+    """非法月份在路径校验阶段就被拦截。"""
+    assert client.delete(f"{BASE}/budgets/0000-01").status_code == 422
+
+
+def test_concurrent_first_insert_falls_back_to_update(
+    db_session_factory, monkeypatch
+):
+    """模拟并发首次写入：读不到记录时插入冲突，应回滚后改为更新。"""
+    month = "2026-07"
+
+    # 模拟另一个请求已经抢先写入
+    other = db_session_factory()
+    other.add(Budget(month=month, amount=Decimal("100.00")))
+    other.commit()
+    other.close()
+
+    session = db_session_factory()
+    repo = BudgetRepository(session)
+    original_get = repo.get
+    calls = {"count": 0}
+
+    def fake_get(target_month):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return None  # 模拟并发时还没读到对方写入的记录
+        return original_get(target_month)
+
+    monkeypatch.setattr(repo, "get", fake_get)
+    service = BudgetService(repo, session)
+
+    result = service.set_budget(month, Decimal("200.00"))
+
+    assert result.amount == Decimal("200.00")
+    assert session.query(Budget).count() == 1
+    session.close()
 
 
 def test_extra_field_rejected(client):
