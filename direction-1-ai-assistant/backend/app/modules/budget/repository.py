@@ -15,14 +15,17 @@ class BudgetRepository:
         self.db = db
 
     def get(self, month: str) -> Budget | None:
+        """按月份查询预算，不存在返回 None。"""
         return self.db.scalar(select(Budget).where(Budget.month == month))
 
     def create(self, month: str, amount: Decimal) -> Budget:
+        """新增一条预算记录，事务由 service 提交。"""
         budget = Budget(month=month, amount=amount)
         self.db.add(budget)
         return budget
 
     def update(self, budget: Budget, amount: Decimal) -> Budget:
+        """覆盖已有预算金额，事务由 service 提交。"""
         budget.amount = amount
         return budget
 
@@ -33,4 +36,5 @@ class BudgetRepository:
             Expense.spent_at <= end,
         )
         value = self.db.scalar(stmt)
+        # SQLite 下 SUM 可能返回 float，统一转成 Decimal 并保留两位小数
         return Decimal(str(value or 0)).quantize(Decimal("0.01"))

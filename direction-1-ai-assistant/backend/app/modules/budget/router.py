@@ -11,6 +11,7 @@ from app.modules.budget.service import BudgetService
 
 router = APIRouter(prefix="/budgets", tags=["预算"])
 
+# 路径参数校验：只接受 YYYY-MM，例如 2026-11，非法格式由 FastAPI 返回 422
 MonthPath = Annotated[
     str,
     Path(pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="预算月份，格式 YYYY-MM"),
@@ -18,6 +19,7 @@ MonthPath = Annotated[
 
 
 def get_service(db: Annotated[Session, Depends(get_db)]) -> BudgetService:
+    """依赖注入：每次请求创建独立的预算 service。"""
     return BudgetService(BudgetRepository(db), db)
 
 
