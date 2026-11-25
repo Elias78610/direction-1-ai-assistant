@@ -1,7 +1,7 @@
 # 接口契约 v1
 
 > 状态：v1 已生效（2026-11-24）
-> 最后更新：2026-11-24  
+> 最后更新：2026-11-25  
 > 适用范围：前后端联调、Mock 替换、接口评审
 
 本文档是前后端唯一的接口约定。代码与文档不一致时，以本文档为准，并同步修正代码。
@@ -291,15 +291,9 @@ GET /api/v1/ping
 
 仅用于连通性检查，不属于业务接口。
 
-## 4. 规划接口
+### 3.9 统计总览
 
-以下接口尚未实现，先约定结构，前端按此开发，后端实现后以 `/openapi.json` 核对。
-
-### 4.1 统计
-
-状态：开发中，由统计模块负责人实现。
-
-#### 总览
+> 2026-11-25 已实现，代码位于 `backend/app/modules/stats/`。
 
 ```
 GET /api/v1/stats/summary?start=2026-11-01&end=2026-11-30
@@ -315,7 +309,7 @@ GET /api/v1/stats/summary?start=2026-11-01&end=2026-11-30
 }
 ```
 
-#### 分类统计
+### 3.10 分类统计
 
 ```
 GET /api/v1/stats/categories?start=2026-11-01&end=2026-11-30
@@ -333,13 +327,15 @@ GET /api/v1/stats/categories?start=2026-11-01&end=2026-11-30
 }
 ```
 
-#### 趋势
+`ratio` 为金额占比（0~1），保留四位小数；`items` 按金额降序，仅返回有数据的类别。
+
+### 3.11 消费趋势
 
 ```
 GET /api/v1/stats/trend?start=2026-11-01&end=2026-11-30&granularity=day
 ```
 
-`granularity`：`day` / `month`，默认 `day`。
+`granularity`：`day` / `month`，默认 `day`。按天最多 366 天，按月最多 120 个月，超出返回 `400 BAD_REQUEST`。
 
 ```json
 {
@@ -353,16 +349,24 @@ GET /api/v1/stats/trend?start=2026-11-01&end=2026-11-30&granularity=day
 }
 ```
 
-时间范围规则：
+缺失周期补 0；`period` 按天为 `YYYY-MM-DD`，按月为 `YYYY-MM`。
+
+三个统计接口共用以下时间范围规则：
 
 | 参数情况 | 处理 |
 |---|---|
-| 都不传 | 当前自然月 |
+| 都不传 | 当前自然月 1 日 00:00:00 至当前时间 |
 | 只传 `start` | `end` 取当前时间 |
 | 只传 `end` | `start` 取 `end` 所在月 1 日 |
 | `start > end` | 400 |
 
-### 4.2 预算
+`end` 传日期时包含当天；带时区的时间参数返回 `422 VALIDATION_ERROR`。
+
+## 4. 规划接口
+
+以下接口尚未实现，先约定结构，前端按此开发，后端实现后以 `/openapi.json` 核对。
+
+### 4.1 预算
 
 状态：未实现，由预算模块负责人实现。
 
@@ -399,7 +403,7 @@ GET /api/v1/stats/trend?start=2026-11-01&end=2026-11-30&granularity=day
 - 未设置预算返回 `404 NOT_FOUND`
 - 预算金额必须 > 0，两位小数
 
-### 4.3 自然语言记账
+### 4.2 自然语言记账
 
 状态：未实现。
 
@@ -431,7 +435,7 @@ POST /api/v1/expenses/parse
 - 前端展示确认卡片，用户确认后调用 `POST /api/v1/expenses` 入库
 - 实现时该路由必须注册在 `/api/v1/expenses/{expense_id}` 之前，否则 `parse` 会被当成账目 id 解析
 
-### 4.4 自然语言查账
+### 4.3 自然语言查账
 
 状态：未实现。
 
@@ -464,7 +468,7 @@ POST /api/v1/query
 
 金额由后端计算，前端只展示，不自行累加。
 
-### 4.5 小票 OCR
+### 4.4 小票 OCR
 
 状态：未实现。
 
@@ -521,7 +525,7 @@ Content-Type: multipart/form-data
 | `GET /api/stats/summary?month=` | `GET /api/v1/stats/summary?start&end` | 路径；月份参数改为时间范围；金额元字符串；不再返回 `income_cents`、`balance_cents` 等收入字段 |
 | `GET /api/stats/category` | `GET /api/v1/stats/categories` | 路径；参数改为 `start/end`；字段 `category`、`amount`、`ratio` |
 | `GET /api/stats/monthly?months=` | `GET /api/v1/stats/trend?granularity=month` | 路径；时间范围参数；`points` 结构 |
-| `POST /api/query` | `POST /api/v1/query` | 补 `/v1`；响应结构按 4.4 |
+| `POST /api/query` | `POST /api/v1/query` | 补 `/v1`；响应结构按 4.3 |
 | `GET /api/budgets?month=` | `GET /api/v1/budgets/{month}` | 路径参数；仅总预算，无分类预算 |
 | `PUT /api/budgets` | `PUT /api/v1/budgets/{month}` | 路径参数；请求体 `{amount}` |
 | `GET /api/budgets/status` | 合并到 `GET /api/v1/budgets/{month}` | 不再单独提供状态接口 |
