@@ -10,7 +10,11 @@ ENV UV_COMPILE_BYTECODE=1 \
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
-COPY app.py ./
+COPY app.py config.py utils.py ./
+COPY components ./components
+COPY sections ./sections
+COPY services ./services
+COPY .streamlit ./.streamlit
 
 EXPOSE 8501
 CMD ["uv", "run", "streamlit", "run", "app.py", \

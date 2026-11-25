@@ -56,14 +56,20 @@ MySQL 8.0 (:3306，主机映射 13306)
     │   └── assessment-direction-1.md  # 考核说明（归档）
     ├── backend/                  # FastAPI 服务，uv 管理依赖
     │   ├── Dockerfile
+    │   ├── tests/                # pytest 回归测试（内存 SQLite）
     │   └── app/
     │       ├── main.py           # 应用入口与健康检查
-    │       ├── core/config.py    # 环境变量配置
+    │       ├── core/             # 配置、异常、日志、参数校验
     │       ├── db/session.py     # 数据库连接
-    │       └── api/              # 接口路由
+    │       └── modules/          # 业务模块（账目、统计、预算）
     ├── frontend/                 # Streamlit 前端，uv 管理依赖
     │   ├── Dockerfile
-    │   └── app.py
+    │   ├── app.py                # 页面入口
+    │   ├── config.py             # 后端地址与常量
+    │   ├── components/           # 侧边栏、图表、确认卡片等组件
+    │   ├── sections/             # 记账、查账、统计、预算、OCR 页面
+    │   ├── services/             # 接口封装与演示数据
+    │   └── docs/                 # 前端部署与接口说明
     └── data/uploads/             # 小票 / 截图上传目录
 ```
 
@@ -119,3 +125,25 @@ docker compose up -d --build
 - 接口契约：[docs/api.md](direction-1-ai-assistant/docs/api.md)
 - 开发环境说明：[docs/development.md](direction-1-ai-assistant/docs/development.md)
 - 考核说明：[docs/assessment-direction-1.md](direction-1-ai-assistant/docs/assessment-direction-1.md)
+
+---
+
+## 前端模块
+
+- 代码位于 `direction-1-ai-assistant/frontend/`，基于 **Streamlit**
+- 功能：自然语言记账、小票 OCR 上传、手动补录、确认卡片、日历视图、统计图表、预算提醒
+- 演示模式：设置 `LEDGER_DEMO_MODE=1` 时使用内置 Mock 数据；关闭后按接口契约调用后端
+- 后端地址：容器内由 `BACKEND_URL` 注入（`http://backend:8000`），本地可用 `LEDGER_API_BASE_URL` 覆盖
+- 接口契约：[docs/api.md](direction-1-ai-assistant/docs/api.md)
+
+### 前端接口
+
+前端通过 `frontend/services/api_client.py` 统一封装请求，调用路径与契约 v1 一致：
+
+| 用途 | 接口 |
+|---|---|
+| 健康检查 / 分类 | `GET /health`、`GET /api/v1/categories` |
+| 自然语言解析 / 入库 | `POST /api/v1/expenses/parse`、`POST /api/v1/expenses` |
+| 小票 OCR | `POST /api/v1/receipts/ocr` |
+| 流水 / 预算 | `GET /api/v1/expenses`、`GET/PUT /api/v1/budgets/{month}` |
+| 统计 | `GET /api/v1/stats/summary`、`GET /api/v1/stats/categories`、`GET /api/v1/stats/trend` |
