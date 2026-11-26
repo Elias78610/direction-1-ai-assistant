@@ -17,7 +17,7 @@ st.session_state["budget_ratio_pct"]，由 app.py 换算成 budget_ratio。
 import streamlit as st
 
 import config
-from components import custom_style
+from components import budget_settings, custom_style
 
 VIEW_MODES = ("💬 对话", "📅 日历", "📊 统计")
 
@@ -69,6 +69,9 @@ def render_sidebar(sessions, current_id, spent, budget, demo_mode=True,
                 f'<div class="sb-budget-meta">已用 {ratio * 100:.0f}% · '
                 f'¥{spent:,.0f} / ¥{budget:,.0f}</div>',
                 unsafe_allow_html=True)
+
+        # 预算设置入口；真实模式写后端，演示模式只改当前会话。
+        budget_settings.render(demo_mode=demo_mode, current_budget=budget)
 
         # ── 4. 历史会话（无边框按钮列表）──
         st.markdown('<div class="sb-label">历史会话</div>', unsafe_allow_html=True)
