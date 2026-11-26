@@ -162,7 +162,13 @@ def _budget_snapshot() -> dict:
     month = current_month_key()
     if _is_demo_mode():
         ratio = float(st.session_state.get("budget_ratio_pct", 85)) / 100
-        budget = float(DEMO_BUDGET["budget"])
+        budget = float(st.session_state.get(
+            "demo_budget_amount", DEMO_BUDGET["budget"]))
+        if budget <= 0:
+            return {"month": month, "amount": 0.0, "spent": 0.0,
+                    "remaining": 0.0, "ratio": 0.0,
+                    "usage_percent": 0.0, "status": "normal",
+                    "message": "", "missing": True}
         spent = round(budget * ratio, 2)
         status, message = _budget_status(budget, spent)
         return {"month": month, "amount": budget, "spent": spent,
