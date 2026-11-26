@@ -295,10 +295,11 @@ def _expense_payload(payload, partial=False):
     if not partial:
         if payload.get("source") is not None:
             data["source"] = _source_value(payload.get("source"))
-        # 注意：后端当前 ExpenseCreate 没有 image_path 字段（模型/ExpenseOut 有），
-        # 因此创建请求暂不发送 image_path；后端 Schema 补充后再恢复。
+        # 新版权后端 ExpenseCreate 已声明 image_path（source=ocr 时必传）。
+        if "image_path" in payload:
+            data["image_path"] = payload.get("image_path")
         allowed = {"amount", "category", "spent_at", "note",
-                   "source", "raw_text"}
+                   "source", "raw_text", "image_path"}
     else:
         # source / image_path 只在创建时确定，更新接口传了会 422。
         allowed = {"amount", "category", "spent_at", "note", "raw_text"}
@@ -369,8 +370,8 @@ def create_transaction(payload):
     """POST /api/v1/expenses —— 新增账目。
 
     请求字段与后端 ExpenseCreate 完全一致：
-    amount / category / spent_at / note / source / raw_text。
-    后端当前未在 ExpenseCreate 中声明 image_path，因此暂不发送该字段。
+    amount / category / spent_at / note / source / raw_text / image_path。
+    source=ocr 时必须提供 image_path；source=nlp 时必须提供 raw_text。
     """
     if is_demo_mode():
         return _demo_api().create_transaction(payload)
