@@ -1,0 +1,82 @@
+[
+  {
+    "id": 1,
+    "price": "30",
+    "time": "昨天",
+    "category": "餐饮",
+    "merchant": "沙县小吃",
+    "meal": "晚餐"
+  },
+  {
+    "id": 2,
+    "price": "15",
+    "time": "上周一",
+    "category": "交通",
+    "merchant": "地铁",
+    "meal": null
+  },
+  {
+    "id": 3,
+    "price": "89",
+    "time": "2026-11-20",
+    "category": "购物",
+    "merchant": "永辉超市",
+    "meal": null
+  },
+  {
+    "id": 4,
+    "price": "22",
+    "time": "前天",
+    "category": "餐饮",
+    "merchant": "奶茶店",
+    "meal": "下午茶"
+  },
+  {
+    "id": 5,
+    "price": "120",
+    "time": "上周六",
+    "category": "娱乐",
+    "merchant": "电影院",
+    "meal": null
+  },
+  {
+    "id": 10,
+    "price": "23.8",
+    "time": "2025-11-24 18:42",
+    "category": "购物",
+    "merchant": "华润万家超市科技园店",
+    "meal": null
+  },
+  {
+    "id": 11,
+    "price": "23.8",
+    "time": "2025-11-24 18:42",
+    "category": "购物",
+    "merchant": "华润万家超市科技园店",
+    "meal": null
+  },
+  {
+    "id": 12,
+    "price": "23.8",
+    "time": "2025-11-24 18:42",
+    "category": "购物",
+    "merchant": "华润万家超市科技园店",
+    "meal": null
+  },
+  {
+    "id": 13,
+    "price": "23.8",
+    "time": "2025-11-24 18:42",
+    "category": "购物",
+    "merchant": "华润万家超市科技园店",
+    "meal": null
+  },
+  {
+    "id": 14,
+    "price": "23.8",
+    "time": "2025-11-24 18:42",
+    "category": "购物",
+    "merchant": "华润万家超市科技园店",
+    "meal": null
+  }
+]
