@@ -1,14 +1,7 @@
 import json
 import pymysql
 
-DB_CONFIG = {
-    "host": "localhost",
-    "port": 3306,
-    "user": "root",
-    "password": "123",
-    "database": "bill",
-    "charset": "utf8mb4",
-}
+from storage import DB_CONFIG
 
 OUTPUT_FILE = "bills.json"
 
