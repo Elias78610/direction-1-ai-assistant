@@ -10,6 +10,8 @@ from app.modules.expense.schemas import (
     ExpenseCreate,
     ExpenseListOut,
     ExpenseOut,
+    ExpenseParseIn,
+    ExpenseParseOut,
     ExpenseUpdate,
     SortField,
     SortOrder,
@@ -53,6 +55,18 @@ def list_expenses(
         sort_by=sort_by, order=order,
     )
     return ExpenseListOut(total=total, items=items)
+
+
+@router.post("/parse", response_model=ExpenseParseOut, summary="自然语言记账解析")
+def parse_expense(
+    data: ExpenseParseIn,
+    service: Annotated[ExpenseService, Depends(get_service)],
+):
+    """解析自然语言记账原句，只解析不入库；确认后再调用新增账目接口。
+
+    注意：本路由必须注册在 `/{expense_id}` 之前，否则 parse 会被当成账目 id。
+    """
+    return service.parse_nlp(data.text)
 
 
 @router.get("/{expense_id}", response_model=ExpenseOut, summary="账目详情")

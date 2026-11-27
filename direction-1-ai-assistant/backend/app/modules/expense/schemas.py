@@ -158,3 +158,24 @@ class ExpenseListOut(BaseModel):
 
     total: int
     items: list[ExpenseOut]
+
+
+class ExpenseParseIn(BaseModel):
+    """自然语言记账解析请求：只解析不入库。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: RawText = Field(..., description="用户的自然语言记账原句")
+
+
+class ExpenseParseOut(BaseModel):
+    """自然语言解析结果；识别不出的字段返回 null，不猜测。"""
+
+    amount: Decimal | None = Field(None, description="金额，单位：元；识别不出为 null")
+    category: CategoryName | None = Field(None, description="消费类别；识别不出为 null")
+    spent_at: NaiveDatetime | None = Field(None, description="消费时间；识别不出为 null")
+    note: str | None = Field(None, max_length=255, description="备注")
+    source: Literal["nlp"] = "nlp"
+    raw_text: str = Field(..., description="原始输入原句")
+    confidence: float = Field(..., ge=0, le=1, description="解析置信度 0~1")
+    message: str | None = Field(None, description="解析提示，如字段缺失原因")
