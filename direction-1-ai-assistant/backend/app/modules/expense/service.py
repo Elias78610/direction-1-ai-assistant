@@ -102,9 +102,12 @@ def _coerce_amount(value) -> Optional[Decimal]:
             return None
         raw = Decimal(match.group())
     try:
-        return raw.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+        amount = raw.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
     except ArithmeticError:
         return None
+    if amount <= 0:
+        return None
+    return amount
 
 
 def _coerce_category(value) -> Optional[str]:
@@ -120,7 +123,7 @@ def _coerce_datetime(value, now: datetime) -> Optional[datetime]:
     if value is None:
         return now
     if isinstance(value, datetime):
-        return value.replace(microsecond=0)
+        return value.replace(microsecond=0, tzinfo=None)
     text = str(value).strip()
     if not text:
         return now
@@ -130,7 +133,8 @@ def _coerce_datetime(value, now: datetime) -> Optional[datetime]:
         except ValueError:
             continue
     try:
-        return datetime.fromisoformat(text).replace(microsecond=0)
+        # 契约要求 naive 本地时间：剥离模型可能带上来的时区偏移，不做换算
+        return datetime.fromisoformat(text).replace(microsecond=0, tzinfo=None)
     except ValueError:
         return now
 
@@ -204,7 +208,8 @@ class ExpenseService:
             category = _coerce_category(llm_result.get("category"))
             spent_at = _coerce_datetime(llm_result.get("spent_at"), now)
             note_value = llm_result.get("note")
-            note = str(note_value).strip()[:255] if note_value else text[:255]
+            note_text = str(note_value).strip()[:255] if note_value else ""
+            note = note_text or None
             llm_hit = True
         else:
             amount = _parse_amount(text)
