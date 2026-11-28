@@ -9,8 +9,9 @@ class Settings(BaseSettings):
     app_name: str = "AI 记账助手"
     log_level: str = "INFO"
 
+    # 仅作占位；真实连接串由 .env 或环境变量 DATABASE_URL 注入
     database_url: str = (
-        "mysql+pymysql://ledger:ledger123456@localhost:13306/ledger?charset=utf8mb4"
+        "mysql+pymysql://ledger:change_me_db@localhost:13306/ledger?charset=utf8mb4"
     )
 
     # 文本大模型（OpenAI 兼容接口）
