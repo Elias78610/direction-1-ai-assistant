@@ -80,10 +80,12 @@ def _range_by_period(period: str, now: datetime) -> tuple[datetime, datetime, st
 
     if period == "today":
         start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        return start, now, "今天"
+        end = now.replace(hour=23, minute=59, second=59, microsecond=0)
+        return start, end, "今天"
 
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    return start, now, "本月"
+    end = now.replace(hour=23, minute=59, second=59, microsecond=0)
+    return start, end, "本月"
 
 
 def _parse_range(question: str, now: datetime) -> tuple[datetime, datetime, str]:
@@ -101,10 +103,12 @@ def _parse_range(question: str, now: datetime) -> tuple[datetime, datetime, str]
 
     if "今天" in question or "今日" in question:
         start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        return start, now, "今天"
+        end = now.replace(hour=23, minute=59, second=59, microsecond=0)
+        return start, end, "今天"
 
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    return start, now, "本月"
+    end = now.replace(hour=23, minute=59, second=59, microsecond=0)
+    return start, end, "本月"
 
 
 class QueryService:
